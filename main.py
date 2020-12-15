@@ -90,7 +90,7 @@ def build_model(args, device, iteration):
 	opt_params = {'lr': 0.001, 'beta3': 0.999}
 	optimizer = adamod.AdaMod(model.parameters(), **opt_params)
 
-	train_loader, test_loaders, val_loader = create_loaders(args, train_data, test_data, val_data)
+	train_loader, test_loader, val_loader = create_loaders(args, train_data, test_data, val_data)
 
 	model_path = create_path(args.model, args.version)
 	if (args.version == 1):
@@ -122,8 +122,8 @@ def build_model(args, device, iteration):
 			print("X : ", val.x.shape)
 			print("Y : ", val.y.shape)
 			train_losses, val_losses = trainer.train_evaluate()
-			total_val_loss += val_losses
-		print(f"Validation Loss after {tscv.get_n_splits()} splits: {total_val_loss / tscv.get_n_splits()}")
+			#total_val_loss += val_losses[-1]
+		#print(f"Validation Loss after {tscv.get_n_splits()} splits: {total_val_loss / tscv.get_n_splits()}")
 	else:
 		print("-----Train-----")
 		print("X : ", train_data.x.shape)
