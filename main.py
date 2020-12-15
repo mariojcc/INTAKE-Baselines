@@ -10,11 +10,13 @@ from datetime import datetime
 from torch.utils.data import DataLoader
 
 from utils.dataset import AscDatasets
+from utils.dataset import AscDataset
 from utils.trainer import Trainer
 from utils.trainer import Tester
 from models.stconvs2s import STConvS2S
 from models.stfd import ST_RFD, ST_CFD 
 from models.convlstm import ConvLSTM
+from sklearn.model_selection import TimeSeriesSplit
 
 class RMSELoss(torch.nn.Module):
     def __init__(self, eps=1e-6):
@@ -31,10 +33,20 @@ def prepare_dataset(args):
 	dataDestination = '/medianmodel_acc'
 	val_split = 0
 	test_split = args.split
-	if (args.validation_split):
+	if (not args.cross_validation):
 		val_split = args.split
 	data = AscDatasets(dataPath, dataDestination, args.region_division, args.input_region, args.scale, val_split = val_split, test_split = test_split)
 	return data
+
+def create_loaders(args, train_data, test_data, val_data = None):
+	params = {'batch_size': args.batch, 'num_workers': args.workers, 'worker_init_fn': init_seed}
+	train_loader = DataLoader(dataset=train_data, shuffle=True, **params)
+	if (val_data != None):
+		val_loader = DataLoader(dataset=val_data, shuffle=False, **params)
+	else:
+		val_loader = None
+	test_loader = DataLoader(dataset=test_data, shuffle=False, **params)
+	return train_loader, test_loader, val_loader
 
 def set_seed(iteration):
 	seed = (iteration * 10) + 1000
@@ -69,16 +81,6 @@ def build_model(args, device, iteration):
 	val_data = data.get_val()
 	test_data = data.get_test()
 
-	print("-----Train-----")
-	print("X : ", train_data.x.shape)
-	print("Y : ", train_data.y.shape)
-	print("-----Val-----")
-	print("X : ", val_data.x.shape)
-	print("Y : ", val_data.y.shape)
-	print("-----Test-----")
-	print("X : ", test_data.x.shape)
-	print("Y : ", test_data.y.shape)
-
 	model = models[args.model](train_data.x.shape, args.num_layers, args.hidden_dim, args.kernel_size, args.dropout, args.forecasting_horizon, args.version, device)
 	model.to(device)
 	print(model)
@@ -88,11 +90,7 @@ def build_model(args, device, iteration):
 	opt_params = {'lr': 0.001, 'beta3': 0.999}
 	optimizer = adamod.AdaMod(model.parameters(), **opt_params)
 
-	params = {'batch_size': args.batch, 'num_workers': args.workers, 'worker_init_fn': init_seed}
-
-	train_loader = DataLoader(dataset=train_data, shuffle=True, **params)
-	val_loader = DataLoader(dataset=val_data, shuffle=False, **params)
-	test_loader = DataLoader(dataset=test_data, shuffle=False, **params)
+	train_loader, test_loaders, val_loader = create_loaders(args, train_data, test_data, val_data)
 
 	model_path = create_path(args.model, args.version)
 	if (args.version == 1):
@@ -100,7 +98,43 @@ def build_model(args, device, iteration):
 	if (args.version == 3):
 		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, recurrent_model= True, lilw = True)
 
-	train_losses, val_losses = trainer.train_evaluate()
+	if (args.cross_validation):
+		tscv = TimeSeriesSplit()
+		fold = 0
+		total_val_loss = 0.0
+		for train_index, val_index in tscv.split(train_data.x):
+			fold += 1
+			x_train_fold, x_val_fold = train_data.x[train_index], train_data.x[val_index]
+			y_train_fold, y_val_fold = train_data.y[train_index], train_data.y[val_index]
+			train = AscDataset(x_train_fold, y_train_fold, data_format = 'tensor')
+			val = AscDataset(x_val_fold, y_val_fold, data_format = 'tensor')
+			train_loader, val_loader, _ = create_loaders(args, train, val)
+			trainer.train_data = train_loader
+			trainer.val_data = val_loader
+			trainer.earlyStop.reset(args.patience)
+			print(f'---------------Fold {fold} ---------------')
+			print("-----Train-----")
+			print("Index:", train_index)
+			print("X : ", train.x.shape)
+			print("Y : ", train.y.shape)
+			print("-----Val-----")
+			print("Index:", val_index)
+			print("X : ", val.x.shape)
+			print("Y : ", val.y.shape)
+			train_losses, val_losses = trainer.train_evaluate()
+			total_val_loss += val_losses
+		print(f"Validation Loss after {tscv.get_n_splits()} splits: {total_val_loss / tscv.get_n_splits()}")
+	else:
+		print("-----Train-----")
+		print("X : ", train_data.x.shape)
+		print("Y : ", train_data.y.shape)
+		print("-----Val-----")
+		print("X : ", val_data.x.shape)
+		print("Y : ", val_data.y.shape)
+		print("-----Test-----")
+		print("X : ", test_data.x.shape)
+		print("Y : ", test_data.y.shape)
+		train_losses, val_losses = trainer.train_evaluate()
 
 	tester = Tester(model, optimizer, criterion, test_loader, device, False, recurrent_model=True)
 	if (args.scale):
@@ -144,7 +178,7 @@ if __name__ == '__main__':
 	parser.add_argument('-iw', '--input-window', type=int, default = 5)
 	parser.add_argument('-fh', '--forecasting-horizon', type=int, default=5)
 	parser.add_argument('-i',  '--iteration', type=int, default=1)
-	parser.add_argument('-vs', '--validation-split', type=bool, default=True)
+	parser.add_argument('-cv', '--cross-validation', type=bool, default=False)
 	parser.add_argument('-sp', '--split', type=float, default = 0.2)
 	# 1 = base model, 2 = base + gridmask, 3 = base + lilw, 4 = base + gridmask + lilw
 	parser.add_argument('-v',  '--version', type=int, choices=[1,2,3,4], default=1)

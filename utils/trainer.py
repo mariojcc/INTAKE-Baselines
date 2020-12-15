@@ -137,6 +137,11 @@ class EarlyStop:
 				return True
 			return False
 
+	def reset(self, threshold):
+		self.min_loss = sys.float_info.max
+		self.count = 0
+		self.threshold = threshold
+
 	def save_model(self, epoch, model, optimizer, loss):
 		torch.save({
 			'epoch': epoch,
@@ -163,6 +168,7 @@ class Tester():
 	def test_model(self, dataScaler):
 		batch_rmse_loss = 0.0
 		batch_mae_loss = 0.0
+		batch_r2 = 0.0
 		self.model.eval()
 		with torch.no_grad():
 			for i, (x, y) in enumerate(self.test_data):
@@ -174,20 +180,20 @@ class Tester():
 					output = self.model(x)
 				if (dataScaler != None):
 					output = dataScaler.unscale_data(output.cpu().numpy())
-					output = torch.from_numpy(output).to(device)
+					output = torch.from_numpy(output).to(self.device)
 					y = dataScaler.unscale_data(y.cpu().numpy())
-					y = torch.from_numpy(y).to(device)
+					y = torch.from_numpy(y).to(self.device)
 				if (self.cut_output and not self.recurrent_model):
 					loss_rmse = self.criterion(output[:,:,0,:,:], y[:,:,0,:,:])
 					loss_mae = F.l1_loss(output[:,:,0,:,:], y[:,:,0,:,:])
-					r2,ar2 = self.report_r2(output[:,:,0,:,:], y[:,:,0,:,:])
+					r2,ar2 = self.report_r2(output[:,:,0,:,:].cpu(), y[:,:,0,:,:].cpu())
 				else:
 					loss_rmse = self.criterion(output, y)
 					loss_mae = F.l1_loss(output, y)
-					r2,ar2 = self.report_r2(output, y)
+					r2,ar2 = self.report_r2(output.cpu(), y.cpu())
 				batch_rmse_loss += loss_rmse.detach().item()
 				batch_mae_loss += loss_mae.detach().item()
-				batch_r2 += r2
+				batch_r2 += ar2
 		rmse_loss = batch_rmse_loss/len(self.test_data)
 		mae_loss = batch_mae_loss/len(self.test_data)
 		r2_metric = batch_r2/len(self.test_data)

@@ -125,7 +125,6 @@ class ST_CFD(torch.nn.Module):
 		lw = self.lw_layer(z).contiguous().view(batch, self.encoder.lilw, time, height, width)
 		lilw = torch.cat((li,lw), 1)
 		x = torch.cat((x,lilw), 1)
-
 		x = self.encoder(x, lilw)  
 		x = self.decoder(x, lilw)
 		x = self.encoder(x, decode=True)

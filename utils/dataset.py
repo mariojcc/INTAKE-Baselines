@@ -152,16 +152,16 @@ class AscDatasets():
 		val_cutoff = int(self.dataX.shape[0] * self.val_split)
 		test_cutoff = int(self.dataX.shape[0] * self.test_split)
 		#instances, sequence, height, width
-		train_data_x = self.dataX[0:self.dataX.shape[0]-val_cutoff-test_cutoff, :, ]
+		train_data_x = self.dataX[0:self.dataX.shape[0]-val_cutoff-test_cutoff]
 		train_data_y = self.dataY[0:self.dataY.shape[0]-val_cutoff-test_cutoff]
 		self.train_data_x, self.train_data_y = self.calculate_sub_regions(train_data_x, train_data_y)
 		assert self.train_data_x.shape == self.train_data_y.shape
-		val_data_x = self.dataX[self.dataX.shape[0]-val_cutoff-test_cutoff+1: self.dataX.shape[0]-test_cutoff]
-		val_data_y = self.dataY[self.dataY.shape[0]-val_cutoff-test_cutoff+1: self.dataY.shape[0]-test_cutoff]
+		val_data_x = self.dataX[self.dataX.shape[0]-val_cutoff-test_cutoff: self.dataX.shape[0]-test_cutoff]
+		val_data_y = self.dataY[self.dataY.shape[0]-val_cutoff-test_cutoff: self.dataY.shape[0]-test_cutoff]
 		self.val_data_x, self.val_data_y = self.calculate_sub_regions(val_data_x, val_data_y)
 		assert self.val_data_x.shape == self.val_data_y.shape
-		test_data_x = self.dataX[self.dataX.shape[0]-test_cutoff+1: self.dataX.shape[0]]
-		test_data_y = self.dataY[self.dataY.shape[0]-test_cutoff+1: self.dataY.shape[0]]
+		test_data_x = self.dataX[self.dataX.shape[0]-test_cutoff: self.dataX.shape[0]]
+		test_data_y = self.dataY[self.dataY.shape[0]-test_cutoff: self.dataY.shape[0]]
 		self.test_data_x, self.test_data_y = self.calculate_sub_regions(test_data_x, test_data_y)
 		assert self.test_data_x.shape == self.test_data_y.shape
 
@@ -212,10 +212,17 @@ class AscDatasets():
 		return data
 
 class AscDataset(Dataset):
-	def __init__(self, dataX, dataY):
+	def __init__(self, dataX, dataY, data_format='numpy'):
 		#batch, channel, time, width, height
-		self.x = torch.from_numpy(dataX).float().unsqueeze(1)
-		self.y = torch.from_numpy(dataY).float().unsqueeze(1)
+		if (data_format == 'numpy'):
+			self.x = torch.from_numpy(dataX).float().unsqueeze(1)
+			self.y = torch.from_numpy(dataY).float().unsqueeze(1)
+		elif (data_format == 'tensor'):
+			self.x = dataX
+			self.y = dataY
+		else:
+			raise ValueError("Invalid Data Format")
+
 
 	def normalize(self, x, min_range, max_range):
 		min_val = np.amin(x)
