@@ -68,8 +68,8 @@ class Encoder(torch.nn.Module):
 
 class DecoderSTCFD(torch.nn.Module):
 		
-	def __init__(self, layer_size, hidden_dim, kernel_size, dropout_rate, device, lilw = 0,):
-		super(DecoderCNN, self).__init__()
+	def __init__(self, layer_size, hidden_dim, kernel_size, dropout_rate, device, lilw = 0):
+		super(DecoderSTCFD, self).__init__()
 		self.padding = kernel_size // 2
 		self.conv_layers = torch.nn.ModuleList()
 		self.batch_layers = torch.nn.ModuleList()
@@ -104,20 +104,21 @@ class ST_CFD(torch.nn.Module):
 		super(ST_CFD, self).__init__()
 		self.device = device
 		self.forecasting_horizon = forecasting_horizon
-		self.decoder = DecoderSTCFD(layer_size, hidden_dim, kernel_size, dropout_rate, device)
 		temporal_kernel_size =  [kernel_size, 1, 1]
 		padding_final = [kernel_size // 2, 0, 0]
 		if (self.version == 1):
 			self.encoder = Encoder(layer_size, hidden_dim, kernel_size, dropout_rate, device,  reduce_layer=False)
+			self.decoder = DecoderSTCFD(layer_size, hidden_dim, kernel_size, dropout_rate, device)
 			self.conv_final = torch.nn.Conv3d(in_channels=1, out_channels=1, kernel_size=temporal_kernel_size, padding=padding_final, bias=True)
 		if (self.version in [3,4]):
 			lilw = 4
 			self.encoder = Encoder(layer_size, hidden_dim, kernel_size, dropout_rate, device, lilw = lilw,  reduce_layer=False)
+			self.decoder = DecoderSTCFD(layer_size, hidden_dim, kernel_size, dropout_rate, device, lilw=lilw)
 			self.li_layer = Conv2dLocal(input_shape[3], input_shape[4], in_channels = input_shape[2], out_channels = 2, kernel_size = 1, bias = False)
 			self.lw_layer = Conv2dLocal(input_shape[3], input_shape[4], in_channels = 1, out_channels = 2, kernel_size = 1, bias = False)   
 			self.conv_final = torch.nn.Conv3d(in_channels=1+lilw, out_channels=1, kernel_size=temporal_kernel_size, padding=padding_final, bias=True)
 
-	def forward(self, x):
+	def forward(self, x, original_x = None):
 		batch, channel, time, height, width = x.size()
 		if (self.version in [3,4]):
 			z = x
