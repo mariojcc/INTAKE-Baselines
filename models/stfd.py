@@ -104,29 +104,35 @@ class ST_CFD(torch.nn.Module):
 		super(ST_CFD, self).__init__()
 		self.device = device
 		self.forecasting_horizon = forecasting_horizon
-		self.encoder = Encoder(layer_size, hidden_dim, kernel_size, dropout_rate, device)
 		self.decoder = DecoderSTCFD(layer_size, hidden_dim, kernel_size, dropout_rate, device)
 		temporal_kernel_size =  [kernel_size, 1, 1]
 		padding_final = [kernel_size // 2, 0, 0]
-		self.conv_final = torch.nn.Conv3d(in_channels=1, out_channels=1, 
-					kernel_size=temporal_kernel_size, padding=padding_final, bias=True)
-
+		if (self.version == 1):
+			self.encoder = Encoder(layer_size, hidden_dim, kernel_size, dropout_rate, device,  reduce_layer=False)
+			self.conv_final = torch.nn.Conv3d(in_channels=1, out_channels=1, kernel_size=temporal_kernel_size, padding=padding_final, bias=True)
 		if (self.version in [3,4]):
-			self.encoder.lilw = 2
+			lilw = 4
+			self.encoder = Encoder(layer_size, hidden_dim, kernel_size, dropout_rate, device, lilw = lilw,  reduce_layer=False)
 			self.li_layer = Conv2dLocal(input_shape[3], input_shape[4], in_channels = input_shape[2], out_channels = 2, kernel_size = 1, bias = False)
 			self.lw_layer = Conv2dLocal(input_shape[3], input_shape[4], in_channels = 1, out_channels = 2, kernel_size = 1, bias = False)   
+			self.conv_final = torch.nn.Conv3d(in_channels=1+lilw, out_channels=1, kernel_size=temporal_kernel_size, padding=padding_final, bias=True)
 
 	def forward(self, x):
 		batch, channel, time, height, width = x.size()
-		z = x
-		li = torch.ones(z.squeeze(1).shape).to(self.device)
-		li = self.li_layer(li).unsqueeze(2).expand(-1,-1,time,-1,-1)
-		z = z.view(batch*time, channel, height, width)
-		lw = self.lw_layer(z).contiguous().view(batch, self.encoder.lilw, time, height, width)
-		lilw = torch.cat((li,lw), 1)
-		x = torch.cat((x,lilw), 1)
-		x = self.encoder(x, lilw)  
-		x = self.decoder(x, lilw)
+		if (self.version in [3,4]):
+			z = x
+			li = torch.ones(z.squeeze(1).shape).to(self.device)
+			li = self.li_layer(li).unsqueeze(2).expand(-1,-1,time,-1,-1)
+			z = z.view(batch*time, channel, height, width)
+			lw = self.lw_layer(z).contiguous().view(batch, self.encoder.lilw, time, height, width)
+			lilw = torch.cat((li,lw), 1)
+			x = torch.cat((x,lilw), 1)
+			x = self.encoder(x, lilw)  
+			x = self.decoder(x, lilw)
+		else:
+			x = self.encoder(x)
+			x = self.decoder(x)
+
 		x = self.encoder(x, decode=True)
 		x = self.conv_final(x)
 		return x
