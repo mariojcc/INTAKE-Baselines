@@ -67,7 +67,7 @@ class NCDFDataset(Dataset):
 		return data, removed_observations
 
 class AscDatasets():
-	def __init__(self, dataPath, dataDestination, subregions, current_region, scale, val_split, test_split):
+	def __init__(self, dataPath, dataDestination, subregions, current_region, scale, val_split, test_split, x_seq_len, y_seq_len):
 		self.dataPath = dataPath
 		self.dataDestination = dataDestination
 		self.val_split = val_split
@@ -75,6 +75,8 @@ class AscDatasets():
 		self.subregions = subregions
 		self.current_region = current_region
 		self.scale = scale
+		self.x_seq_len = x_seq_len
+		self.y_seq_len = y_seq_len
 
 		if (path.exists(self.dataPath + self.dataDestination + '_x.asc')):
 			self.dataX, self.dataY = self.load_data()
@@ -85,6 +87,8 @@ class AscDatasets():
 		self.split()
 		if (self.scale):
 			self.scale_data()
+		print(self.dataX.shape)
+		print(self.dataY.shape)
 		self.train_data = AscDataset(self.train_data_x, self.train_data_y)
 		self.val_data = AscDataset(self.val_data_x, self.val_data_y)
 		self.test_data = AscDataset(self.test_data_x, self.test_data_y)
@@ -97,7 +101,7 @@ class AscDatasets():
 		return self.test_data
 
 	def processData(self):
-		months = ['Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep','Oct', 'Nov', 'Dec']
+		months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep','Oct', 'Nov', 'Dec']
 		months31Days = ['Aug', 'Jul','Mar','May','Oct']
 		days=[]
 		for i in range(1,32):
@@ -106,33 +110,44 @@ class AscDatasets():
 			days.append(str(i))
 		dataX = []
 		dataY = []
-		singleSequenceX = []
-		singleSequenceY = []
-		sequenceLen = 5
+		data = []
+		#singleSequenceX = []
+		#singleSequenceY = []
 		dataPrefix = self.dataPath + '/medianmodel_'
 		numberFiles = len(months)*(len(days)-1) + 5
-		firstSequenceDone = False
+		xSeqDone = False
 		for i in range(len(months)):
 			for j in range(len(days)):
 				if (not j == 30 or months[i] in months31Days):
 					dataPath = dataPrefix + days[j] + '-' + months[i] + '-2020.asc'
 					if (not path.exists(dataPath)):
-						break
-					if (len(singleSequenceX) == sequenceLen):
+						continue
+					'''if (len(singleSequenceX) == self.x_seq_len):
 						dataX.append(singleSequenceX)
 						singleSequenceX = []
-						firstSequenceDone = True
-					if (len(singleSequenceY) == sequenceLen):
+						xSeqDone = True
+					if (len(singleSequenceY) == self.y_seq_len):
 						dataY.append(singleSequenceY)
 						singleSequenceY = []
+						xSeqDone = False
 					singleSequenceX.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))
-					if (firstSequenceDone):
-						singleSequenceY.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))
-		if (len(dataX) != len(dataY)):
-			dataX = dataX[0:len(dataX)-1]
+					if (xSeqDone):
+						singleSequenceY.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))'''
+					data.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))
+		data = np.array(data)
+		for i in range(data.shape[0]): 
+			singleSequenceX = data[i:i+self.x_seq_len, :, :]
+			singleSequenceY = data[i+self.x_seq_len:i+self.x_seq_len+self.y_seq_len, :, :]
+			if (singleSequenceX.shape[0] == self.x_seq_len and singleSequenceY.shape[0] == self.y_seq_len):
+				dataX.append(singleSequenceX)
+				dataY.append(singleSequenceY)
 		assert len(dataX) == len(dataY)
 		npDataX = np.array(dataX)
 		npDataY = np.array(dataY)
+		assert (npDataX[0,1,:,:].all() == npDataX[1,0,:,:].all())
+		assert(npDataY[0,0,:,:].all() == npDataX[1,20,:,:].all())
+		print(npDataX.shape)
+		print(npDataY.shape)
 		return npDataX,npDataY
 
 	def save_data(self):
@@ -155,17 +170,18 @@ class AscDatasets():
 		train_data_x = self.dataX[0:self.dataX.shape[0]-val_cutoff-test_cutoff]
 		train_data_y = self.dataY[0:self.dataY.shape[0]-val_cutoff-test_cutoff]
 		self.train_data_x, self.train_data_y = self.calculate_sub_regions(train_data_x, train_data_y)
-		assert self.train_data_x.shape == self.train_data_y.shape
+		assert self.train_data_x.shape[0] == self.train_data_y.shape[0]
 		val_data_x = self.dataX[self.dataX.shape[0]-val_cutoff-test_cutoff: self.dataX.shape[0]-test_cutoff]
 		val_data_y = self.dataY[self.dataY.shape[0]-val_cutoff-test_cutoff: self.dataY.shape[0]-test_cutoff]
 		self.val_data_x, self.val_data_y = self.calculate_sub_regions(val_data_x, val_data_y)
-		assert self.val_data_x.shape == self.val_data_y.shape
+		assert self.val_data_x.shape[0] == self.val_data_y.shape[0]
 		test_data_x = self.dataX[self.dataX.shape[0]-test_cutoff: self.dataX.shape[0]]
 		test_data_y = self.dataY[self.dataY.shape[0]-test_cutoff: self.dataY.shape[0]]
 		self.test_data_x, self.test_data_y = self.calculate_sub_regions(test_data_x, test_data_y)
-		assert self.test_data_x.shape == self.test_data_y.shape
+		assert self.test_data_x.shape[0] == self.test_data_y.shape[0]
 
 	def calculate_sub_regions(self, data_x, data_y):
+		print(data_x.shape)
 		cut_height = int(data_x.shape[2] / self.subregions)
 		remainder = data_x.shape[2] % self.subregions
 		start = cut_height * (self.current_region-1)
@@ -174,13 +190,13 @@ class AscDatasets():
 		data_x = data_x[:,:,start:start+cut_height,:]
 		data_y = data_y[:,:,start:start+cut_height,:]
 
-		cut_width = int(data_x.shape[3] / self.subregions)
+		'''cut_width = int(data_x.shape[3] / self.subregions)
 		remainder = data_x.shape[3] % self.subregions
 		start = cut_width * (self.current_region-1)
 		if (remainder > 0 and self.current_region == self.subregions):
 			cut_width += remainder
 		data_x = data_x[:,:,:,start:start+cut_width]
-		data_y = data_y[:,:,:,start:start+cut_width]
+		data_y = data_y[:,:,:,start:start+cut_width]'''
 		return data_x, data_y
 
 	def replace_missing_values(self, dataX, dataY, value):
@@ -196,13 +212,16 @@ class AscDatasets():
 		for i in range(batch):
 			for j in range(time):	
 				self.train_data_x[i,j,:,:] = self.scaler.transform(self.train_data_x[i,j,:,:])
-				self.train_data_y[i,j,:,:] = self.scaler.transform(self.train_data_y[i,j,:,:])
+				if (j < self.train_data_y.shape[1]):
+					self.train_data_y[i,j,:,:] = self.scaler.transform(self.train_data_y[i,j,:,:])
 				if (i < self.val_data_x.shape[0]):
 					self.val_data_x[i,j,:,:] = self.scaler.transform(self.val_data_x[i,j,:,:])
-					self.val_data_y[i,j,:,:] = self.scaler.transform(self.val_data_y[i,j,:,:])
+					if (j < self.val_data_y.shape[1]):
+						self.val_data_y[i,j,:,:] = self.scaler.transform(self.val_data_y[i,j,:,:])
 				if (i < self.test_data_x.shape[0]):
 					self.test_data_x[i,j,:,:] = self.scaler.transform(self.test_data_x[i,j,:,:])
-					self.test_data_y[i,j,:,:] = self.scaler.transform(self.test_data_y[i,j,:,:])
+					if (j < self.test_data_y.shape[1]):
+						self.test_data_y[i,j,:,:] = self.scaler.transform(self.test_data_y[i,j,:,:])
 
 	def unscale_data(self, data):
 		batch,ch,time,height,width = data.shape

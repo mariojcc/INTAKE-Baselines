@@ -70,7 +70,7 @@ class DecoderSTCFD(torch.nn.Module):
 		
 	def __init__(self, layer_size, hidden_dim, kernel_size, dropout_rate, device, lilw = 0):
 		super(DecoderSTCFD, self).__init__()
-		self.padding = kernel_size // 2
+		self.padding = kernel_size - 1
 		self.conv_layers = torch.nn.ModuleList()
 		self.batch_layers = torch.nn.ModuleList()
 		self.dropout_layers = torch.nn.ModuleList()
@@ -103,6 +103,7 @@ class ST_CFD(torch.nn.Module):
 	def __init__(self, input_shape, layer_size, hidden_dim, kernel_size, dropout_rate, forecasting_horizon, version, device):
 		super(ST_CFD, self).__init__()
 		self.device = device
+		self.version = version
 		self.forecasting_horizon = forecasting_horizon
 		temporal_kernel_size =  [kernel_size, 1, 1]
 		padding_final = [kernel_size // 2, 0, 0]
@@ -125,7 +126,7 @@ class ST_CFD(torch.nn.Module):
 			li = torch.ones(z.squeeze(1).shape).to(self.device)
 			li = self.li_layer(li).unsqueeze(2).expand(-1,-1,time,-1,-1)
 			z = z.view(batch*time, channel, height, width)
-			lw = self.lw_layer(z).contiguous().view(batch, self.encoder.lilw, time, height, width)
+			lw = self.lw_layer(z).contiguous().view(batch, 2, time, height, width)
 			lilw = torch.cat((li,lw), 1)
 			x = torch.cat((x,lilw), 1)
 			x = self.encoder(x, lilw)  
@@ -136,6 +137,7 @@ class ST_CFD(torch.nn.Module):
 
 		x = self.encoder(x, decode=True)
 		x = self.conv_final(x)
+		x = x[:,:,:self.forecasting_horizon, :, :]
 		return x
 
 class ST_RFD(torch.nn.Module):

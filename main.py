@@ -35,7 +35,7 @@ def prepare_dataset(args):
 	test_split = args.split
 	if (not args.cross_validation):
 		val_split = args.split
-	data = AscDatasets(dataPath, dataDestination, args.region_division, args.input_region, args.scale, val_split = val_split, test_split = test_split)
+	data = AscDatasets(dataPath, dataDestination, args.region_division, args.input_region, args.scale, val_split, test_split, args.x_sequence_len, args.forecasting_horizon)
 	return data
 
 def create_loaders(args, train_data, test_data, val_data = None):
@@ -93,10 +93,14 @@ def build_model(args, device, iteration):
 	train_loader, test_loader, val_loader = create_loaders(args, train_data, test_data, val_data)
 
 	model_path = create_path(args.model, args.version)
+	if (args.model == 'st-rfd'):
+		recurrent_model = True
+	else:
+		recurrent_model = False
 	if (args.version == 1):
-		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, recurrent_model= True)
+		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, recurrent_model= recurrent_model)
 	if (args.version == 3):
-		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, recurrent_model= True, lilw = True)
+		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, recurrent_model= recurrent_model, lilw = True)
 
 	if (args.cross_validation):
 		tscv = TimeSeriesSplit()
@@ -122,7 +126,12 @@ def build_model(args, device, iteration):
 			print("X : ", val.x.shape)
 			print("Y : ", val.y.shape)
 			train_losses, val_losses = trainer.train_evaluate()
-			#total_val_loss += val_losses[-1]
+			'''model = models[args.model](train_data.x.shape, args.num_layers, args.hidden_dim, args.kernel_size, args.dropout, args.forecasting_horizon, args.version, device)
+			model.to(device)
+			trainer.model = model
+			optimizer = adamod.AdaMod(model.parameters(), **opt_params)
+			trainer.optimizer = optimizer
+			total_val_loss += val_losses[-1]'''
 		#print(f"Validation Loss after {tscv.get_n_splits()} splits: {total_val_loss / tscv.get_n_splits()}")
 	else:
 		print("-----Train-----")
@@ -136,7 +145,7 @@ def build_model(args, device, iteration):
 		print("Y : ", test_data.y.shape)
 		train_losses, val_losses = trainer.train_evaluate()
 
-	tester = Tester(model, optimizer, criterion, test_loader, device, False, recurrent_model=True)
+	tester = Tester(model, optimizer, criterion, test_loader, device, False, args.model + '_' + str(args.version) + '_' + str(args.input_region),  recurrent_model=True)
 	if (args.scale):
 		rmse,mae,r2 = tester.load_and_test(trainer.path, data)
 	else:
@@ -183,6 +192,7 @@ if __name__ == '__main__':
 	# 1 = base model, 2 = base + gridmask, 3 = base + lilw, 4 = base + gridmask + lilw
 	parser.add_argument('-v',  '--version', type=int, choices=[1,2,3,4], default=1)
 	parser.add_argument('-s',  '--scale', type=bool, default=False)
+	parser.add_argument('-xsl',  '--x-sequence-len', type=int, default=5)
 
 	args = parser.parse_args()
 
