@@ -144,8 +144,8 @@ class AscDatasets():
 		assert len(dataX) == len(dataY)
 		npDataX = np.array(dataX)
 		npDataY = np.array(dataY)
-		assert (npDataX[0,1,:,:].all() == npDataX[1,0,:,:].all())
-		assert(npDataY[0,0,:,:].all() == npDataX[1,20,:,:].all())
+		#assert (npDataX[0,1,:,:].all() == npDataX[1,0,:,:].all())
+		#assert(npDataY[0,0,:,:].all() == npDataX[1,self.x_seq_len-1,:,:].all())
 		print(npDataX.shape)
 		print(npDataY.shape)
 		return npDataX,npDataY

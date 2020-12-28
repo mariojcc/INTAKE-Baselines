@@ -145,6 +145,17 @@ def build_model(args, device, iteration):
 		print("Y : ", test_data.y.shape)
 		train_losses, val_losses = trainer.train_evaluate()
 
+	if (args.disjoint):
+		test_data.x = test_data.x[::args.x_sequence_len, :, :, :, :]
+		test_data.y = test_data.y[::args.forecasting_horizon, :, :, :, :]
+		assert test_data.x.shape[0] == test_data.y.shape[0]
+		params = {'batch_size': args.batch, 'num_workers': args.workers, 'worker_init_fn': init_seed}
+		test_loader = DataLoader(dataset=test_data, shuffle=False, **params)
+		print("-----Test-----")
+		print("X : ", test_data.x.shape)
+		print("Y : ", test_data.y.shape)
+
+	_, test_loader, _ = create_loaders(args, train_data, test_data, val_data)
 	tester = Tester(model, optimizer, criterion, test_loader, device, False, args.model + '_' + str(args.version) + '_' + str(args.input_region),  recurrent_model=True)
 	if (args.scale):
 		rmse,mae,r2 = tester.load_and_test(trainer.path, data)
@@ -193,6 +204,7 @@ if __name__ == '__main__':
 	parser.add_argument('-v',  '--version', type=int, choices=[1,2,3,4], default=1)
 	parser.add_argument('-s',  '--scale', type=bool, default=False)
 	parser.add_argument('-xsl',  '--x-sequence-len', type=int, default=5)
+	parser.add_argument('dj',  '--disjoint', type=bool, default=False)
 
 	args = parser.parse_args()
 
