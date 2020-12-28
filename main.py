@@ -36,7 +36,8 @@ def prepare_dataset(args):
 	if (not args.cross_validation):
 		val_split = args.split
 	data = AscDatasets(dataPath, dataDestination, args.region_division, args.input_region, args.scale, val_split, test_split, args.x_sequence_len, args.forecasting_horizon)
-	return data
+	mask = data.get_mask_land()
+	return data, mask
 
 def create_loaders(args, train_data, test_data, val_data = None):
 	params = {'batch_size': args.batch, 'num_workers': args.workers, 'worker_init_fn': init_seed}
@@ -76,7 +77,7 @@ def build_model(args, device, iteration):
 		'stconvs2s': STConvS2S,
 		'convlstm': ConvLSTM
 	}
-	data = prepare_dataset(args)
+	data, mask = prepare_dataset(args)
 	train_data = data.get_train()
 	val_data = data.get_val()
 	test_data = data.get_test()
@@ -98,9 +99,9 @@ def build_model(args, device, iteration):
 	else:
 		recurrent_model = False
 	if (args.version == 1):
-		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, recurrent_model= recurrent_model)
+		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, mask, recurrent_model= recurrent_model)
 	if (args.version == 3):
-		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, recurrent_model= recurrent_model, lilw = True)
+		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, mask, recurrent_model= recurrent_model, lilw = True)
 
 	if (args.cross_validation):
 		tscv = TimeSeriesSplit()
@@ -147,7 +148,7 @@ def build_model(args, device, iteration):
 
 	if (args.disjoint):
 		test_data.x = test_data.x[::args.x_sequence_len, :, :, :, :]
-		test_data.y = test_data.y[::args.forecasting_horizon, :, :, :, :]
+		test_data.y = test_data.y[::args.x_sequence_len, :, :, :, :]
 		assert test_data.x.shape[0] == test_data.y.shape[0]
 		params = {'batch_size': args.batch, 'num_workers': args.workers, 'worker_init_fn': init_seed}
 		test_loader = DataLoader(dataset=test_data, shuffle=False, **params)
@@ -156,7 +157,7 @@ def build_model(args, device, iteration):
 		print("Y : ", test_data.y.shape)
 
 	_, test_loader, _ = create_loaders(args, train_data, test_data, val_data)
-	tester = Tester(model, optimizer, criterion, test_loader, device, False, args.model + '_' + str(args.version) + '_' + str(args.input_region),  recurrent_model=True)
+	tester = Tester(model, optimizer, criterion, test_loader, device, False, args.model + '_' + str(args.version) + '_' + str(args.input_region),  mask, recurrent_model=True)
 	if (args.scale):
 		rmse,mae,r2 = tester.load_and_test(trainer.path, data)
 	else:
@@ -204,7 +205,7 @@ if __name__ == '__main__':
 	parser.add_argument('-v',  '--version', type=int, choices=[1,2,3,4], default=1)
 	parser.add_argument('-s',  '--scale', type=bool, default=False)
 	parser.add_argument('-xsl',  '--x-sequence-len', type=int, default=5)
-	parser.add_argument('dj',  '--disjoint', type=bool, default=False)
+	parser.add_argument('-dj',  '--disjoint', type=bool, default=False)
 
 	args = parser.parse_args()
 

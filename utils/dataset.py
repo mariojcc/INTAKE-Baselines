@@ -83,7 +83,7 @@ class AscDatasets():
 		else:
 			self.dataX, self.dataY = self.processData()
 			self.save_data()
-		#self.dataX, self.dataY = self.replace_missing_values(self.dataX, self.dataY, np.NaN)
+		self.dataX, self.dataY = self.replace_missing_values(self.dataX, self.dataY, 0.0)
 		self.split()
 		if (self.scale):
 			self.scale_data()
@@ -111,8 +111,8 @@ class AscDatasets():
 		dataX = []
 		dataY = []
 		data = []
-		#singleSequenceX = []
-		#singleSequenceY = []
+		singleSequenceX = []
+		singleSequenceY = []
 		dataPrefix = self.dataPath + '/medianmodel_'
 		numberFiles = len(months)*(len(days)-1) + 5
 		xSeqDone = False
@@ -129,7 +129,6 @@ class AscDatasets():
 					if (len(singleSequenceY) == self.y_seq_len):
 						dataY.append(singleSequenceY)
 						singleSequenceY = []
-						xSeqDone = False
 					singleSequenceX.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))
 					if (xSeqDone):
 						singleSequenceY.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))'''
@@ -229,6 +228,19 @@ class AscDatasets():
 			for j in range(time):
 				data[i,0,j,:,:] = self.scaler.inverse_transform(data[i,0,j,:,:])
 		return data
+
+	def get_mask_land(self):
+		filename = 'mask.npy'
+		mask_land = np.load(filename)
+		mask_land = torch.from_numpy(mask_land).float()
+		cut_height = int(mask_land.shape[3] / self.subregions)
+		remainder = mask_land.shape[3] % self.subregions
+		start = cut_height * (self.current_region-1)
+		if (remainder > 0 and self.current_region == self.subregions):
+			cut_height += remainder
+		mask_land = mask_land[:,:,:,start:start+cut_height,:]
+		print(mask_land.shape)
+		return mask_land
 
 class AscDataset(Dataset):
 	def __init__(self, dataX, dataY, data_format='numpy'):

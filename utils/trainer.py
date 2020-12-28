@@ -7,7 +7,7 @@ import sklearn.metrics as metrics
 import matplotlib.pyplot as plt
 
 class Trainer():
-	def __init__(self, model, train_data, val_data, criterion, optimizer, max_epochs, device, path, patience, cut_output = False,
+	def __init__(self, model, train_data, val_data, criterion, optimizer, max_epochs, device, path, patience, mask, cut_output = False,
 	 recurrent_model=False, grid_mask=None, is_reconstruction = False, lilw=False, pretrain=False):
 		self.model = model
 		self.train_data = train_data
@@ -20,6 +20,7 @@ class Trainer():
 		self.path = path
 		self.grid = None
 		self.lilw = lilw
+		self.mask_land = mask.to(self.device)
 		self.pretrain = pretrain
 		self.is_reconstruction = is_reconstruction
 		self.recurrent_model = recurrent_model
@@ -76,6 +77,7 @@ class Trainer():
 					else:
 						output = self.model(x_in)
 			#batch : channel : time-steps : lat : lon
+			output = output*self.mask_land
 			if (self.cut_output and not self.recurrent_model):
 				loss = self.criterion(output[:,:,0,:,:], y[:,:,0,:,:])
 			else:
@@ -105,6 +107,7 @@ class Trainer():
 						output = self.model(y)
 					else:
 						output = self.model(x)
+				output = output * self.mask_land
 				if (self.cut_output and not self.recurrent_model):
 					loss = self.criterion(output[:,:,0,:,:], y[:,:,0,:,:])
 				else:
@@ -153,7 +156,7 @@ class EarlyStop:
 		print ('=> Saving a new best')
 
 class Tester():
-	def __init__(self, model, optimizer, criterion, test_data, device, cut_output, model_name, recurrent_model=False):
+	def __init__(self, model, optimizer, criterion, test_data, device, cut_output, model_name, mask, recurrent_model=False):
 		self.model = model
 		self.model_name = model_name
 		self.optimizer = optimizer
@@ -161,6 +164,7 @@ class Tester():
 		self.test_data = test_data
 		self.device = device
 		self.cut_output = cut_output
+		self.mask_land = mask.to(self.device)
 		self.recurrent_model = recurrent_model
 
 	def load_and_test(self, path, dataScaler = None):
@@ -180,6 +184,7 @@ class Tester():
 					output = self.model(x, states)
 				else:
 					output = self.model(x)
+				output = output * self.mask_land
 				if (dataScaler != None):
 					output = dataScaler.unscale_data(output.cpu().numpy())
 					output = torch.from_numpy(output).to(self.device)
@@ -276,6 +281,3 @@ class Tester():
 		figure.set_figwidth(10)
 		figure.suptitle(name, y=0.6)
 		figure.savefig(img, dpi=500)
-
-
-
