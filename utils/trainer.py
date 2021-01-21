@@ -5,6 +5,7 @@ from extras.gridmask import GridMask
 import torch.nn.functional as F
 import sklearn.metrics as metrics
 import matplotlib.pyplot as plt
+import numpy as np
 
 class Trainer():
 	def __init__(self, model, train_data, val_data, criterion, optimizer, max_epochs, device, path, patience, mask, cut_output = False,
@@ -35,7 +36,7 @@ class Trainer():
 			#self.grid.set_prob(epoch)
 			print(self.grid.get_prob())
 		for epoch in range(self.max_epochs):
-			self.train(train_losses)
+			self.train(train_losses, self.train_data)
 			print('Train - Epoch %d, Epoch Loss: %f' % (epoch, train_losses[epoch]))
 			self.evaluate(val_losses)
 			print('Val Avg. Loss: %f' % (val_losses[epoch]))
@@ -43,12 +44,16 @@ class Trainer():
 				torch.cuda.empty_cache()
 			if (self.earlyStop.check_stop_condition(epoch, self.model, self.optimizer, val_losses[epoch])):
 				break
+		#Fine-tune trained model with validation data so model is trained on data as close to prediction as possible
+		self.load_model(self.path)
+		self.train(train_losses, self.val_data)
+		self.earlyStop.save_model(epoch, self.model, self.optimizer, val_losses[epoch])
 		return train_losses, val_losses
 
-	def train(self, train_losses):
+	def train(self, train_losses, train_set):
 		train_loss = self.model.train()
 		epoch_train_loss = 0.0
-		for i, (x, y) in enumerate(self.train_data):
+		for i, (x, y) in enumerate(train_set):
 			x,y = x.to(self.device), y.to(self.device)
 			if (self.grid is not None):
 				x_grid = self.grid(x)
@@ -85,7 +90,7 @@ class Trainer():
 			loss.backward()
 			self.optimizer.step()
 			epoch_train_loss += loss.detach().item()
-		avg_epoch_loss = epoch_train_loss/len(self.train_data)
+		avg_epoch_loss = epoch_train_loss/len(train_set)
 		train_losses.append(avg_epoch_loss)
 
 	def evaluate(self, val_losses):
@@ -119,6 +124,15 @@ class Trainer():
 	def init_hidden(self, batch_size, hidden_size):
 		h = torch.zeros(batch_size,hidden_size, device=self.device)
 		return (h,h)
+
+	def load_model(self, path):
+		assert os.path.isfile(path)
+		checkpoint = torch.load(path)
+		self.model.load_state_dict(checkpoint['model_state_dict'])
+		self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+		epoch = checkpoint['epoch']
+		loss = checkpoint['loss']
+		print(f'Loaded model at path {path}, best epoch: {epoch}, best loss: {loss}')
 
 
 
@@ -175,10 +189,18 @@ class Tester():
 		batch_rmse_loss = 0.0
 		batch_mae_loss = 0.0
 		batch_r2 = 0.0
-		self.model.eval()
-		with torch.no_grad():
-			for i, (x, y) in enumerate(self.test_data):
-				x,y = x.to(self.device), y.to(self.device)
+		months = ['Sep','Oct', 'Nov', 'Dec']
+		days=[]
+		for i in range(1,32):
+			if (i < 10):
+				i = '0' + str(i)
+			days.append(str(i))
+		monthIndex = 0
+		dayIndex = 0
+		for i, (x, y) in enumerate(self.test_data):
+			x,y = x.to(self.device), y.to(self.device)
+			self.model.eval()
+			with torch.no_grad():
 				if (self.recurrent_model):
 					states = self.init_hidden(x.size()[0], x.size()[3]*x.size()[4])
 					output = self.model(x, states)
@@ -192,23 +214,32 @@ class Tester():
 					y = torch.from_numpy(y).to(self.device)
 					x = dataScaler.unscale_data(x.cpu().numpy())
 					x = torch.from_numpy(x).to(self.device)
-				if (self.cut_output and not self.recurrent_model):
-					loss_rmse = self.criterion(output[:,:,0,:,:], y[:,:,0,:,:])
-					loss_mae = F.l1_loss(output[:,:,0,:,:], y[:,:,0,:,:])
-					r2,ar2 = self.report_r2(output[:,:,0,:,:].cpu(), y[:,:,0,:,:].cpu())
-				else:
-					loss_rmse = self.criterion(output, y)
-					loss_mae = F.l1_loss(output, y)
-					r2,ar2 = self.report_r2(output.cpu(), y.cpu())
+				loss_rmse = self.criterion(output, y)
+				loss_mae = F.l1_loss(output, y)
+				r2,ar2 = self.report_r2(output.cpu(), y.cpu())
+				#for j in range(output.shape[0]):
+				#	file_name, dayIndex, monthIndex = self.calculate_file_name(dayIndex, days, monthIndex, months)
+				#	self.save_prediction(output[j,0,0,:,:].cpu().numpy(), file_name)
 				if (i == 0):
 					self.create_plots_sequence(x, output, y)
 				batch_rmse_loss += loss_rmse.detach().item()
 				batch_mae_loss += loss_mae.detach().item()
 				batch_r2 += ar2
+			self.online_learning(x,y)
 		rmse_loss = batch_rmse_loss/len(self.test_data)
 		mae_loss = batch_mae_loss/len(self.test_data)
 		r2_metric = batch_r2/len(self.test_data)
 		return rmse_loss, mae_loss, r2_metric
+
+	def online_learning(self, x, y):
+		self.model.train()
+		self.optimizer.zero_grad()
+		x_in = x
+		output = self.model(x_in, original_x = x)
+		output = output*self.mask_land
+		loss = self.criterion(output, y)
+		loss.backward()
+		self.optimizer.step()
 
 	def init_hidden(self, batch_size, hidden_size):
 		h = torch.zeros(batch_size,hidden_size, device=self.device)
@@ -237,40 +268,45 @@ class Tester():
 		print(f'Loaded model at path {path}, best epoch: {epoch}, best loss: {loss}')
 
 	def create_plots_sequence(self, inputs, outputs, targets):
-		seq_len = outputs.shape[2]
+		seq_len = inputs.shape[2]
 		total = torch.cat((inputs[0,0,:,:,:],outputs[0,0,:,:,:],targets[0,0,:,:,:]))
 		#min_val = torch.min(total).cpu()
-		min_val = -1
+		min_val = torch.min(total).cpu()
 		max_val = torch.max(total).cpu()
-		inputs[inputs < 0] = -1
-		outputs[outputs < 0] = -1
-		targets[targets < 0] = -1
 		fig_inputs, ax_inputs = plt.subplots(nrows=1, ncols=seq_len)
-		fig_outputs, ax_outputs = plt.subplots(nrows=1, ncols=seq_len)
-		fig_targets, ax_targets = plt.subplots(nrows=1, ncols=seq_len)
+		fig_outputs, ax_outputs = plt.subplots(nrows=1, ncols=1)
+		fig_targets, ax_targets = plt.subplots(nrows=1, ncols=1)
 		for i in range(seq_len):
-		  t, im_inputs = self.create_plot(ax_inputs, inputs, i, min_val, max_val)
-		  f, im_targets = self.create_plot(ax_targets, targets, i, min_val, max_val)
-		  g, im_outputs = self.create_plot(ax_outputs, outputs, i, min_val, max_val)
+		  t, im_inputs = self.create_plot(ax_inputs, inputs, i, min_val, max_val, True)
+		  #f, im_targets = self.create_plot(ax_targets, targets, i, min_val, max_val)
+		  #g, im_outputs = self.create_plot(ax_outputs, outputs, i, min_val, max_val)
+		f, im_targets = self.create_plot(ax_targets, targets, 0, min_val, max_val, False)
+		g, im_outputs = self.create_plot(ax_outputs, outputs, 0, min_val, max_val, False)
 		self.add_colorbar(ax_inputs[4], im_inputs, fig_inputs)
-		self.add_colorbar(ax_outputs[4], im_outputs, fig_outputs)
-		self.add_colorbar(ax_targets[4], im_targets, fig_targets)
+		self.add_colorbar(ax_outputs, im_outputs, fig_outputs)
+		self.add_colorbar(ax_targets, im_targets, fig_targets)
 		directory = os.path.join('figures', self.model_name.split('_')[0])
 		os.makedirs(directory, exist_ok=True)
 		self.save_plot(fig_inputs, directory, 'inputs')
 		self.save_plot(fig_outputs, directory, 'outputs')
 		self.save_plot(fig_targets, directory, 'targets')
 
-	def create_plot(self, axis, data, index, min_val, max_val):
-	  data_np = data[0,0,index,:,:].cpu().numpy()
-	  im = axis[index].imshow(data_np, vmin=min_val, vmax=max_val, interpolation='none')
-	  axis[index].get_xaxis().set_visible(False)
-	  axis[index].get_yaxis().set_visible(False)
-	  return axis, im
+	def create_plot(self, axis, data, index, min_val, max_val, is_input):
+		if (is_input):
+			data_np = data[0,0,index,:,:].cpu().numpy()
+			im = axis[index].imshow(data_np, vmin=min_val, vmax=max_val, interpolation='none')
+			axis[index].get_xaxis().set_visible(False)
+			axis[index].get_yaxis().set_visible(False)
+		else:
+			data_np = data[0,0,0,:,:].cpu().numpy()
+			im = axis.imshow(data_np, vmin=min_val, vmax=max_val, interpolation='none')
+			axis.get_xaxis().set_visible(False)
+			axis.get_yaxis().set_visible(False)
+		return axis, im
 
 	def add_colorbar(self, axis, im, figure):
 		pos = axis.get_position()
-		pad = 0.03
+		pad = 0.25
 		width = 0.02
 		ax = figure.add_axes([pos.xmax + pad, pos.ymin, width, (pos.ymax-pos.ymin) ])
 		figure.colorbar(im, cax=ax)
@@ -281,3 +317,17 @@ class Tester():
 		figure.set_figwidth(10)
 		figure.suptitle(name, y=0.6)
 		figure.savefig(img, dpi=500)
+
+	def save_prediction(self, prediction, name):
+		dataPath = 'data/medianmodel_acc_pred_'
+		with open(dataPath+name+'.asc', 'wb') as f:
+			np.save(f, prediction, allow_pickle=False)
+
+	def calculate_file_name(self, dayIndex, days, monthIndex, months):
+		file_name = days[dayIndex] + '-' + months[monthIndex] + '-2020_3'
+		if (dayIndex == len(days)-2 and monthIndex in [0,2] or dayIndex == len(days)-1 and monthIndex in [1,3]):
+			dayIndex = 0
+			monthIndex += 1
+		else:
+			dayIndex += 1
+		return file_name, dayIndex, monthIndex

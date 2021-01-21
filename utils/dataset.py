@@ -77,6 +77,7 @@ class AscDatasets():
 		self.scale = scale
 		self.x_seq_len = x_seq_len
 		self.y_seq_len = y_seq_len
+		self.cutoff = None
 
 		if (path.exists(self.dataPath + self.dataDestination + '_x.asc')):
 			self.dataX, self.dataY = self.load_data()
@@ -90,7 +91,10 @@ class AscDatasets():
 		print(self.dataX.shape)
 		print(self.dataY.shape)
 		self.train_data = AscDataset(self.train_data_x, self.train_data_y)
-		self.val_data = AscDataset(self.val_data_x, self.val_data_y)
+		if (self.val_split == 0):
+			self.val_data = None
+		else:
+			self.val_data = AscDataset(self.val_data_x, self.val_data_y)
 		self.test_data = AscDataset(self.test_data_x, self.test_data_y)
 
 	def get_train(self):
@@ -102,7 +106,7 @@ class AscDatasets():
 
 	def processData(self):
 		months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep','Oct', 'Nov', 'Dec']
-		months31Days = ['Aug', 'Jul','Mar','May','Oct']
+		months31Days = ['Aug', 'Jul','Mar','May','Oct', 'Dec']
 		days=[]
 		for i in range(1,32):
 			if (i < 10):
@@ -114,7 +118,7 @@ class AscDatasets():
 		singleSequenceX = []
 		singleSequenceY = []
 		dataPrefix = self.dataPath + '/medianmodel_'
-		numberFiles = len(months)*(len(days)-1) + 5
+		numberFiles = len(months)*(len(days)-1)
 		xSeqDone = False
 		for i in range(len(months)):
 			for j in range(len(days)):
@@ -122,22 +126,17 @@ class AscDatasets():
 					dataPath = dataPrefix + days[j] + '-' + months[i] + '-2020.asc'
 					if (not path.exists(dataPath)):
 						continue
-					'''if (len(singleSequenceX) == self.x_seq_len):
-						dataX.append(singleSequenceX)
-						singleSequenceX = []
-						xSeqDone = True
-					if (len(singleSequenceY) == self.y_seq_len):
-						dataY.append(singleSequenceY)
-						singleSequenceY = []
-					singleSequenceX.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))
-					if (xSeqDone):
-						singleSequenceY.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))'''
 					data.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))
+					if ("01-Sep-2020" in dataPath):
+						index = len(data)-1
 		data = np.array(data)
-		for i in range(data.shape[0]): 
-			singleSequenceX = data[i:i+self.x_seq_len, :, :]
-			singleSequenceY = data[i+self.x_seq_len:i+self.x_seq_len+self.y_seq_len, :, :]
-			if (singleSequenceX.shape[0] == self.x_seq_len and singleSequenceY.shape[0] == self.y_seq_len):
+		for i in range(data.shape[0]):
+			if (i+self.x_seq_len+self.y_seq_len <= data.shape[0]):
+				singleSequenceX = data[i:i+self.x_seq_len, :, :]
+				singleSequenceY = data[i+self.x_seq_len+self.y_seq_len-1:i+self.x_seq_len+self.y_seq_len, :, :]
+				if (i+self.x_seq_len+self.y_seq_len-1 == index):
+					print("Defining cutoff")
+					self.cutoff = i
 				dataX.append(singleSequenceX)
 				dataY.append(singleSequenceY)
 		assert len(dataX) == len(dataY)
@@ -148,6 +147,37 @@ class AscDatasets():
 		print(npDataX.shape)
 		print(npDataY.shape)
 		return npDataX,npDataY
+
+	def process_data_arima(self):
+		months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep','Oct', 'Nov', 'Dec']
+		months31Days = ['Aug', 'Jul','Mar','May','Oct', 'Dec']
+		days=[]
+		for i in range(1,32):
+			if (i < 10):
+				i = '0' + str(i)
+			days.append(str(i))
+		dataX = []
+		dataY = []
+		data = []
+		dataPrefix = self.dataPath + '/medianmodel_'
+		numberFiles = len(months)*(len(days)-1)
+		for i in range(len(months)):
+			for j in range(len(days)):
+				if (not j == 30 or months[i] in months31Days):
+					dataPath = dataPrefix + days[j] + '-' + months[i] + '-2020.asc'
+					if (not path.exists(dataPath)):
+						continue
+					data.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))
+					if ("01-Sep-2020" in dataPath):
+						index = len(data)-1
+		data = np.array(data)
+		data_ravel = []
+		for i in range(data.shape[0]):
+			data_ravel.append(data[i].ravel())
+		data_ravel = np.array(data_ravel)
+		with open(self.dataPath+self.dataDestination+'_arima.asc', 'wb') as f:
+			np.save(f, data_ravel, allow_pickle=False)
+		return data_ravel
 
 	def save_data(self):
 		with open(self.dataPath+self.dataDestination+'_x.asc', 'wb') as f:
@@ -162,20 +192,32 @@ class AscDatasets():
 			dataY = np.load(f)
 		return dataX, dataY
 
+	def load_data_arima(self):
+		path_arima = self.dataPath+self.dataDestination+'_arima.asc'
+		if (path.exists(path_arima)):
+			with open(path_arima, 'rb') as f:
+				data_arima = np.load(f)
+		else:
+			data_arima = process_data_arima()
+		return data_arima
+
 	def split(self):
-		val_cutoff = int(self.dataX.shape[0] * self.val_split)
-		test_cutoff = int(self.dataX.shape[0] * self.test_split)
+		#test_cutoff = int(self.dataX.shape[0] * self.test_split)
+		if (self.cutoff is None):
+			#Index for Sep 1st prediction
+			self.cutoff = 152
+		val_cutoff = int(self.cutoff * self.val_split)
 		#instances, sequence, height, width
-		train_data_x = self.dataX[0:self.dataX.shape[0]-val_cutoff-test_cutoff]
-		train_data_y = self.dataY[0:self.dataY.shape[0]-val_cutoff-test_cutoff]
+		train_data_x = self.dataX[0:self.cutoff - val_cutoff]
+		train_data_y = self.dataY[0:self.cutoff - val_cutoff]
 		self.train_data_x, self.train_data_y = self.calculate_sub_regions(train_data_x, train_data_y)
 		assert self.train_data_x.shape[0] == self.train_data_y.shape[0]
-		val_data_x = self.dataX[self.dataX.shape[0]-val_cutoff-test_cutoff: self.dataX.shape[0]-test_cutoff]
-		val_data_y = self.dataY[self.dataY.shape[0]-val_cutoff-test_cutoff: self.dataY.shape[0]-test_cutoff]
+		val_data_x = self.dataX[self.cutoff - val_cutoff:self.cutoff]
+		val_data_y = self.dataY[self.cutoff - val_cutoff:self.cutoff]
 		self.val_data_x, self.val_data_y = self.calculate_sub_regions(val_data_x, val_data_y)
 		assert self.val_data_x.shape[0] == self.val_data_y.shape[0]
-		test_data_x = self.dataX[self.dataX.shape[0]-test_cutoff: self.dataX.shape[0]]
-		test_data_y = self.dataY[self.dataY.shape[0]-test_cutoff: self.dataY.shape[0]]
+		test_data_x = self.dataX[self.cutoff: self.dataX.shape[0]]
+		test_data_y = self.dataY[self.cutoff: self.dataY.shape[0]]
 		self.test_data_x, self.test_data_y = self.calculate_sub_regions(test_data_x, test_data_y)
 		assert self.test_data_x.shape[0] == self.test_data_y.shape[0]
 
@@ -188,6 +230,7 @@ class AscDatasets():
 			cut_height += remainder
 		data_x = data_x[:,:,start:start+cut_height,:]
 		data_y = data_y[:,:,start:start+cut_height,:]
+
 
 		'''cut_width = int(data_x.shape[3] / self.subregions)
 		remainder = data_x.shape[3] % self.subregions
