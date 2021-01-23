@@ -140,9 +140,12 @@ class ConvLSTM(nn.Module):
 			h, c = hidden_state[layer_idx]
 			output_inner = []
 			for t in range(seq_len):
-
 				h, c = self.cell_list[layer_idx](input_tensor=cur_layer_input[:, :, t, :, :], cur_state=[h, c])
+				#if (t == seq_len-1):
 				output_inner.append(h)
+			'''for t in range(seq_len-1):
+				h,c = self.cell_list[layer_idx](input_tensor=h, cur_state=[h, c])
+				output_inner.append(h)'''
 
 			layer_output = torch.stack(output_inner, dim=2)
 			cur_layer_input = layer_output
@@ -176,7 +179,7 @@ class ConvLSTM(nn.Module):
 
 class STConvLSTM(nn.Module):
 	
-	def __init__(self, input_shape, layer_size, hidden_dim, kernel_size, dropout_rate, forecasting_horizon, device):
+	def __init__(self, input_shape, layer_size, hidden_dim, kernel_size, dropout_rate, forecasting_horizon, device, version):
 		super(STConvLSTM, self).__init__()
 		
 		self.convlstm_layer = nn.ModuleList()
@@ -189,7 +192,7 @@ class STConvLSTM(nn.Module):
 			self.convlstm_layer.append(ConvLSTM(input_size=(input_shape[3], input_shape[4]), input_dim=input_dim, hidden_dim=hidden_dim,
 												kernel_size=(kernel_size, kernel_size),
 												 num_layers=1, batch_first=True, bias=False, return_all_layers=True))
-			self.bn_layers.append(EvoNorm3D(hidden_dim, version = 'B0_3D'))
+			self.bn_layers.append(EvoNorm3D(hidden_dim, version = 'B0_3D', sequence=7))
 			self.dropout_layers.append(nn.Dropout(dropout_rate))
 			input_dim = hidden_dim 
 			
@@ -202,4 +205,4 @@ class STConvLSTM(nn.Module):
 			x = bn(x[0])
 			x = drop(x)
 		out = self.final_conv(x)
-		return out
+		return out[:,:,-1:,:,:]

@@ -198,7 +198,7 @@ class AscDatasets():
 			with open(path_arima, 'rb') as f:
 				data_arima = np.load(f)
 		else:
-			data_arima = process_data_arima()
+			data_arima = self.process_data_arima()
 		return data_arima
 
 	def split(self):

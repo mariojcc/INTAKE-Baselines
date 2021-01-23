@@ -39,9 +39,9 @@ class Encoder(torch.nn.Module):
 		out_channels = hidden_dim 
 		for i in range(self.layer_size):
 			self.conv_layers.append(FeedBackwardConv3d(in_channels, out_channels,self.kernel_size, padding = self.padding))
-			self.bn_layers.append(EvoNorm3D(out_channels, version = 'B0_3D', sequence=5))
+			self.bn_layers.append(EvoNorm3D(out_channels, version = 'B0_3D', sequence=7))
 			self.dropout_layers.append(torch.nn.Dropout(dropout_rate))
-			self.decode_bn_layers.append(EvoNorm3D(32, version = 'B0_3D', sequence=5))
+			self.decode_bn_layers.append(EvoNorm3D(32, version = 'B0_3D', sequence=7))
 			in_channels = out_channels + self.lilw
 		self.conv_reduce = FeedBackwardConv3d(in_channels, 1, 1)
 
@@ -86,7 +86,7 @@ class DecoderSTCFD(torch.nn.Module):
 					torch.nn.Conv3d(in_channels=in_channels, out_channels=out_channels, 
 										kernel_size=temporal_kernel_size, padding=temporal_padding, bias=False)
 			)
-			self.batch_layers.append(EvoNorm3D(out_channels, version = 'B0_3D', sequence=5))
+			self.batch_layers.append(EvoNorm3D(out_channels, version = 'B0_3D', sequence=7))
 			self.dropout_layers.append(torch.nn.Dropout(dropout_rate))
 			in_channels = out_channels + self.lilw
 
@@ -137,7 +137,8 @@ class ST_CFD(torch.nn.Module):
 
 		x = self.encoder(x, decode=True)
 		x = self.conv_final(x)
-		x = x[:,:,:self.forecasting_horizon, :, :]
+		#x = x[:,:,:self.forecasting_horizon, :, :]
+		x = x[:,:,-1:,:,:]
 		return x
 
 class ST_RFD(torch.nn.Module):

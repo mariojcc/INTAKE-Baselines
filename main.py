@@ -15,7 +15,7 @@ from utils.trainer import Trainer
 from utils.trainer import Tester
 from models.stconvs2s import STConvS2S
 from models.stfd import ST_RFD, ST_CFD 
-from models.convlstm import ConvLSTM
+from models.convlstm import STConvLSTM
 from sklearn.model_selection import TimeSeriesSplit
 
 class RMSELoss(torch.nn.Module):
@@ -75,7 +75,7 @@ def build_model(args, device, iteration):
 		'st-rfd': ST_RFD,
 		'st-cfd': ST_CFD,
 		'stconvs2s': STConvS2S,
-		'convlstm': ConvLSTM
+		'convlstm': STConvLSTM
 	}
 	data, mask = prepare_dataset(args)
 	train_data = data.get_train()
@@ -86,7 +86,7 @@ def build_model(args, device, iteration):
 	model.to(device)
 	print(model)
 
-	criterion = RMSELoss()
+	criterion = torch.nn.MSELoss()
 
 	opt_params = {'lr': 0.001, 'beta3': 0.999}
 	optimizer = adamod.AdaMod(model.parameters(), **opt_params)
@@ -155,8 +155,8 @@ def build_model(args, device, iteration):
 		print("-----Test-----")
 		print("X : ", test_data.x.shape)
 		print("Y : ", test_data.y.shape)
+		_, test_loader, _ = create_loaders(args, train_data, test_data, val_data)
 
-	_, test_loader, _ = create_loaders(args, train_data, test_data, val_data)
 	tester = Tester(model, optimizer, criterion, test_loader, device, False, args.model + '_' + str(args.version) + '_' + str(args.input_region),  mask, recurrent_model=True)
 	if (args.scale):
 		rmse,mae,r2 = tester.load_and_test(trainer.path, data)
@@ -178,7 +178,7 @@ def run_model(args, device):
 	mean_mae, std_mae = np.mean(test_mae), np.std(test_mae)
 	mean_r2, std_r2 = np.mean(test_r2), np.std(test_r2)
 	print('============================================')
-	print(f'Test set RMSE mean: {mean_rmse}, std: {std_rmse}')
+	print(f'Test set MSE mean: {mean_rmse}, std: {std_rmse}')
 	print(f'Test set MAE mean: {mean_mae}, std: {std_mae}')
 	print(f'Test set R2 mean: {mean_r2}, std: {std_r2}')
 	print('============================================')
@@ -191,7 +191,7 @@ if __name__ == '__main__':
 	parser.add_argument('-b',  '--batch', type=int, default=15)
 	parser.add_argument('-p',  '--patience', type=int, default=10)
 	parser.add_argument('-w',  '--workers', type=int, default=4)
-	parser.add_argument('-m',  '--model', type=str, choices=['st-rfd', 'st-cfd', 'stconvs2s'], default='st-rfd')
+	parser.add_argument('-m',  '--model', type=str, choices=['st-rfd', 'st-cfd', 'stconvs2s', 'convlstm'], default='st-rfd')
 	parser.add_argument('-l',  '--num-layers', type=int, dest='num_layers', default=3)
 	parser.add_argument('-d',  '--hidden-dim', type=int, dest='hidden_dim', default=32)
 	parser.add_argument('-k',  '--kernel-size', type=int, dest='kernel_size', default=5)

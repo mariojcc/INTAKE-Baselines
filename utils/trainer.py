@@ -9,7 +9,7 @@ import numpy as np
 
 class Trainer():
 	def __init__(self, model, train_data, val_data, criterion, optimizer, max_epochs, device, path, patience, mask, cut_output = False,
-	 recurrent_model=False, grid_mask=None, is_reconstruction = False, lilw=False, pretrain=False):
+	 recurrent_model=False, grid_mask=None, is_reconstruction = False, lilw=False, pretrain=False, online_learning_epochs = 1):
 		self.model = model
 		self.train_data = train_data
 		self.val_data = val_data
@@ -25,6 +25,7 @@ class Trainer():
 		self.pretrain = pretrain
 		self.is_reconstruction = is_reconstruction
 		self.recurrent_model = recurrent_model
+		self.online_learning_epochs = online_learning_epochs
 		self.earlyStop = EarlyStop(patience, self.path)
 		if (grid_mask is not None):
 			self.grid = GridMask(grid_mask['d1'], grid_mask['d2'], device, grid_mask['ratio'], grid_mask['max_prob'], grid_mask['max_epochs'])
@@ -46,7 +47,9 @@ class Trainer():
 				break
 		#Fine-tune trained model with validation data so model is trained on data as close to prediction as possible
 		self.load_model(self.path)
-		self.train(train_losses, self.val_data)
+		for e in range(self.online_learning_epochs):
+			self.train(train_losses, self.train_data)
+			print('Online Training - Epoch %d, Epoch Loss: %f' % (e, train_losses[epoch+e+1]))
 		self.earlyStop.save_model(epoch, self.model, self.optimizer, val_losses[epoch])
 		return train_losses, val_losses
 
@@ -170,7 +173,7 @@ class EarlyStop:
 		print ('=> Saving a new best')
 
 class Tester():
-	def __init__(self, model, optimizer, criterion, test_data, device, cut_output, model_name, mask, recurrent_model=False):
+	def __init__(self, model, optimizer, criterion, test_data, device, cut_output, model_name, mask, recurrent_model=False, online_learning_epochs = 1):
 		self.model = model
 		self.model_name = model_name
 		self.optimizer = optimizer
@@ -180,6 +183,7 @@ class Tester():
 		self.cut_output = cut_output
 		self.mask_land = mask.to(self.device)
 		self.recurrent_model = recurrent_model
+		self.online_learning_epochs = online_learning_epochs
 
 	def load_and_test(self, path, dataScaler = None):
 		self.load_model(path)
@@ -225,7 +229,8 @@ class Tester():
 				batch_rmse_loss += loss_rmse.detach().item()
 				batch_mae_loss += loss_mae.detach().item()
 				batch_r2 += ar2
-			self.online_learning(x,y)
+			for e in range(self.online_learning_epochs):
+				loss = self.online_learning(x,y)
 		rmse_loss = batch_rmse_loss/len(self.test_data)
 		mae_loss = batch_mae_loss/len(self.test_data)
 		r2_metric = batch_r2/len(self.test_data)
@@ -240,6 +245,7 @@ class Tester():
 		loss = self.criterion(output, y)
 		loss.backward()
 		self.optimizer.step()
+		return loss
 
 	def init_hidden(self, batch_size, hidden_size):
 		h = torch.zeros(batch_size,hidden_size, device=self.device)
