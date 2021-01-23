@@ -12,6 +12,8 @@ Original file is located at
 
 from os import path
 import numpy as np
+import wandb
+
 def processData():
     months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep','Oct', 'Nov', 'Dec']
     months31Days = ['Aug', 'Jul','Mar','May','Oct', 'Dec']
@@ -104,18 +106,6 @@ print(len(losses_percentual_weekly))
 # Commented out IPython magic to ensure Python compatibility.
 # %%capture
 # !pip install wandb -qqq
-# import wandb
-
-!wandb login
-
-masked_array = np.ma.masked_invalid(losses_rmse_weekly[18])
-fig = plt.figure(figsize=(16, 12))
-cmap = plt.cm.Reds
-cmap.set_bad(color='white')
-plt.imshow(masked_array, cmap=cmap)
-plt.axis('off')
-plt.colorbar()
-plt.show()
 
 import math
 import random
