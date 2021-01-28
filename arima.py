@@ -39,8 +39,9 @@ if __name__ == '__main__':
 	train_data = data[:-129] #165 #158
 	test_data = data[-122:]
 	#preds = np.empty([122, test_data.shape[1]])
-	train = train_data.T[:int(train_data.shape[1]/2)]
+	train = train_data.T[int(train_data.shape[1]/2):]
 	idxs = list(range(len(train)))
+	idxs = [x+int(train_data.shape[1]/2) for x in idxs]
 	with Pool() as pool:
 		func = partial(run_arima, data)
 		pred_matrix = pool.starmap(func, zip(train, idxs))
@@ -66,7 +67,7 @@ if __name__ == '__main__':
 				preds[j, i] = pred_sequence[-1]
 				in_x = np.append(in_x, data[start_index, i])
 			save_prediction(preds)'''
-	preds = preds.reshape(preds.shape[0], 288, 141)
+	#preds = preds.reshape(preds.shape[0], 288, 141)
 	save_prediction(preds)
 	#rmse = sqrt(mean_squared_error(test_data, preds))
 	#mse = mean_squared_error(test_data, preds)
