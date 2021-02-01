@@ -13,7 +13,7 @@ from utils.dataset import AscDatasets
 from utils.dataset import AscDataset
 from utils.trainer import Trainer
 from utils.trainer import Tester
-from models.stconvs2s import STConvS2S
+from models.stconvs2s import STConvS2S, STConvS2S_U
 from models.stfd import ST_RFD, ST_CFD 
 from models.convlstm import STConvLSTM
 from sklearn.model_selection import TimeSeriesSplit
@@ -75,7 +75,7 @@ def build_model(args, device, iteration):
 	models = {
 		'st-rfd': ST_RFD,
 		'st-cfd': ST_CFD,
-		'stconvs2s': STConvS2S,
+		'stconvs2s': STConvS2S_U,
 		'convlstm': STConvLSTM
 	}
 	data, mask = prepare_dataset(args)
