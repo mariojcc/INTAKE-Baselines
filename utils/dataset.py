@@ -95,7 +95,7 @@ class AscDatasets():
 			self.val_data = None
 		else:
 			self.val_data = AscDataset(self.val_data_x, self.val_data_y)
-		self.test_data = AscDataset(self.test_data_x, self.test_data_y)
+		self.test_data = AscDataset(self.test_data_x, self.test_data_y, border_data_x = self.test_data_border_x, border_data_y = self.test_data_border_y)
 
 	def get_train(self):
 		return self.train_data
@@ -103,6 +103,8 @@ class AscDatasets():
 		return self.val_data
 	def get_test(self):
 		return self.test_data
+	def get_test_border(self):
+		return self.test_data_border
 
 	def processData(self):
 		months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep','Oct', 'Nov', 'Dec']
@@ -220,16 +222,18 @@ class AscDatasets():
 		test_data_y = self.dataY[self.cutoff: self.dataY.shape[0]]
 		self.test_data_x, self.test_data_y = self.calculate_sub_regions(test_data_x, test_data_y)
 		assert self.test_data_x.shape[0] == self.test_data_y.shape[0]
+		self.test_data_border_x, self.test_data_border_y = self.calculate_sub_regions(test_data_x, test_data_y, 10)
+		assert self.test_data_border_x.shape[0] == self.test_data_border_y.shape[0]
 
-	def calculate_sub_regions(self, data_x, data_y):
+	def calculate_sub_regions(self, data_x, data_y, step = 0):
 		print(data_x.shape)
 		cut_height = int(data_x.shape[2] / self.subregions)
 		remainder = data_x.shape[2] % self.subregions
 		start = cut_height * (self.current_region-1)
 		if (remainder > 0 and self.current_region == self.subregions):
 			cut_height += remainder
-		data_x = data_x[:,:,start:start+cut_height,:]
-		data_y = data_y[:,:,start:start+cut_height,:]
+		data_x = data_x[:,:,start+step:start+cut_height+step,:]
+		data_y = data_y[:,:,start+step:start+cut_height+step,:]
 
 
 		'''cut_width = int(data_x.shape[3] / self.subregions)
@@ -286,14 +290,22 @@ class AscDatasets():
 		return mask_land
 
 class AscDataset(Dataset):
-	def __init__(self, dataX, dataY, data_format='numpy'):
+	def __init__(self, dataX, dataY, data_format='numpy', border_data_x = None, border_data_y = None):
 		#batch, channel, time, width, height
+		self.border_x = None
+		self.border_y = None
 		if (data_format == 'numpy'):
 			self.x = torch.from_numpy(dataX).float().unsqueeze(1)
 			self.y = torch.from_numpy(dataY).float().unsqueeze(1)
+			if not (border_data_x is None):
+				self.border_x = torch.from_numpy(border_data_x).float().unsqueeze(1)
+				self.border_y = torch.from_numpy(border_data_y).float().unsqueeze(1)
 		elif (data_format == 'tensor'):
 			self.x = dataX
 			self.y = dataY
+			if not (border_data_x is None):
+				self.border_x = border_data_x
+				self.border_y = border_data_y
 		else:
 			raise ValueError("Invalid Data Format")
 
@@ -304,6 +316,8 @@ class AscDataset(Dataset):
 		return min_range + ((x-min_val)*(max_range - min_range))/(max_val - min_val)
 
 	def __getitem__(self, index):
+		if not (self.border_x is None):
+			return (self.x[index,:,:,:,:], self.border_x[index,:,:,:,:], self.y[index,:,:,:,:], self.border_y[index,:,:,:,:])
 		return (self.x[index,:,:,:,:], self.y[index,:,:,:,:])
 
 	def __len__(self):

@@ -56,6 +56,7 @@ def set_seed(iteration):
 	torch.manual_seed(seed)
 	torch.cuda.manual_seed(seed)
 	torch.backends.cudnn.deterministic=True
+	torch.set_deterministic(True)
 	return seed
 
 def init_seed(iteration):
@@ -157,7 +158,7 @@ def build_model(args, device, iteration):
 		print("Y : ", test_data.y.shape)
 		_, test_loader, _ = create_loaders(args, train_data, test_data, val_data)
 
-	tester = Tester(model, optimizer, criterion, test_loader, device, False, args.model + '_' + str(args.version) + '_' + str(args.input_region),  mask, recurrent_model=True)
+	tester = Tester(model, optimizer, criterion, test_loader, device, False, args.model + '_' + str(args.version) + '_' + str(args.input_region),  mask, recurrent_model=False)
 	if (args.scale):
 		rmse,mae,r2 = tester.load_and_test(trainer.path, data)
 	else:

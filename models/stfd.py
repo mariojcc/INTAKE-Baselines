@@ -191,4 +191,4 @@ class ST_RFD(torch.nn.Module):
 		if (self.version in [3,4]):
 			x = x[:,0:1,:,:,:]
 		x = x.view(batch, channel, self.forecasting_horizon, height, width)
-		return x
+		return x[:,:,-1:,:,:]

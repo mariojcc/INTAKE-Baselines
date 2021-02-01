@@ -48,7 +48,7 @@ class Trainer():
 		#Fine-tune trained model with validation data so model is trained on data as close to prediction as possible
 		self.load_model(self.path)
 		for e in range(self.online_learning_epochs):
-			self.train(train_losses, self.train_data)
+			self.train(train_losses, self.val_data)
 			print('Online Training - Epoch %d, Epoch Loss: %f' % (e, train_losses[epoch+e+1]))
 		self.earlyStop.save_model(epoch, self.model, self.optimizer, val_losses[epoch])
 		return train_losses, val_losses
@@ -193,16 +193,18 @@ class Tester():
 		batch_rmse_loss = 0.0
 		batch_mae_loss = 0.0
 		batch_r2 = 0.0
-		months = ['Sep','Oct', 'Nov', 'Dec']
+		'''months = ['Sep','Oct', 'Nov', 'Dec']
 		days=[]
 		for i in range(1,32):
 			if (i < 10):
 				i = '0' + str(i)
 			days.append(str(i))
 		monthIndex = 0
-		dayIndex = 0
-		for i, (x, y) in enumerate(self.test_data):
-			x,y = x.to(self.device), y.to(self.device)
+		dayIndex = 0'''
+		preds = []
+		preds_border = []
+		for i, (x, x_border, y, y_border) in enumerate(self.test_data):
+			x,x_border,y,y_border = x.to(self.device), x_border.to(self.device), y.to(self.device), y_border.to(self.device)
 			self.model.eval()
 			with torch.no_grad():
 				if (self.recurrent_model):
@@ -210,18 +212,21 @@ class Tester():
 					output = self.model(x, states)
 				else:
 					output = self.model(x)
+					output_border = self.model(x_border)
 				output = output * self.mask_land
-				if (dataScaler != None):
+				'''if (dataScaler != None):
 					output = dataScaler.unscale_data(output.cpu().numpy())
 					output = torch.from_numpy(output).to(self.device)
 					y = dataScaler.unscale_data(y.cpu().numpy())
 					y = torch.from_numpy(y).to(self.device)
 					x = dataScaler.unscale_data(x.cpu().numpy())
-					x = torch.from_numpy(x).to(self.device)
+					x = torch.from_numpy(x).to(self.device)'''
 				loss_rmse = self.criterion(output, y)
 				loss_mae = F.l1_loss(output, y)
 				r2,ar2 = self.report_r2(output.cpu(), y.cpu())
-				#for j in range(output.shape[0]):
+				for j in range(output.shape[0]):
+					preds.append(output[j,0,0,:,:].cpu().numpy())
+					preds_border.append(output_border[j,0,0,:,:].cpu().numpy())
 				#	file_name, dayIndex, monthIndex = self.calculate_file_name(dayIndex, days, monthIndex, months)
 				#	self.save_prediction(output[j,0,0,:,:].cpu().numpy(), file_name)
 				if (i == 0):
@@ -234,6 +239,8 @@ class Tester():
 		rmse_loss = batch_rmse_loss/len(self.test_data)
 		mae_loss = batch_mae_loss/len(self.test_data)
 		r2_metric = batch_r2/len(self.test_data)
+		self.save_prediction(preds, "1")
+		self.save_prediction(preds_border, "border_1")
 		return rmse_loss, mae_loss, r2_metric
 
 	def online_learning(self, x, y):
