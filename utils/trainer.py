@@ -9,7 +9,7 @@ import numpy as np
 
 class Trainer():
 	def __init__(self, model, train_data, val_data, criterion, optimizer, max_epochs, device, path, patience, mask, cut_output = False,
-	 recurrent_model=False, grid_mask=None, is_reconstruction = False, lilw=False, pretrain=False, online_learning_epochs = 1):
+	 recurrent_model=False, grid_mask=None, is_reconstruction = False, lilw=False, pretrain=False, online_learning_epochs = 5):
 		self.model = model
 		self.train_data = train_data
 		self.val_data = val_data
@@ -173,7 +173,7 @@ class EarlyStop:
 		print ('=> Saving a new best')
 
 class Tester():
-	def __init__(self, model, optimizer, criterion, test_data, device, cut_output, model_name, mask, recurrent_model=False, online_learning_epochs = 1):
+	def __init__(self, model, optimizer, criterion, test_data, device, cut_output, model_name, mask, recurrent_model=False, online_learning_epochs = 5):
 		self.model = model
 		self.model_name = model_name
 		self.optimizer = optimizer
@@ -235,12 +235,13 @@ class Tester():
 				batch_mae_loss += loss_mae.detach().item()
 				batch_r2 += ar2
 			for e in range(self.online_learning_epochs):
-				loss = self.online_learning(x,y)
+				for j in range(x.shape[0]):
+					loss = self.online_learning(x[j],y[j])
 		rmse_loss = batch_rmse_loss/len(self.test_data)
 		mae_loss = batch_mae_loss/len(self.test_data)
 		r2_metric = batch_r2/len(self.test_data)
-		self.save_prediction(preds, "1")
-		self.save_prediction(preds_border, "border_1")
+		self.save_prediction(preds, "2")
+		self.save_prediction(preds_border, "border_neg_2")
 		return rmse_loss, mae_loss, r2_metric
 
 	def online_learning(self, x, y):
