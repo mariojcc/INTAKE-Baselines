@@ -41,12 +41,13 @@ def prepare_dataset(args):
 
 def create_loaders(args, train_data, test_data, val_data = None):
 	params = {'batch_size': args.batch, 'num_workers': args.workers, 'worker_init_fn': init_seed}
+	params_test = {'batch_size': 1, 'num_workers': args.workers, 'worker_init_fn': init_seed}
 	train_loader = DataLoader(dataset=train_data, shuffle=True, **params)
 	if (val_data != None):
 		val_loader = DataLoader(dataset=val_data, shuffle=False, **params)
 	else:
 		val_loader = None
-	test_loader = DataLoader(dataset=test_data, shuffle=False, **params)
+	test_loader = DataLoader(dataset=test_data, shuffle=False, **params_test)
 	return train_loader, test_loader, val_loader
 
 def set_seed(iteration):
