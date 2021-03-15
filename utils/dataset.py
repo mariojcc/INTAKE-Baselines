@@ -157,8 +157,8 @@ class AscDatasets():
 		return npDataX,npDataY
 
 	def process_data_arima(self):
-		months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep','Oct', 'Nov', 'Dec']
-		months31Days = ['Aug', 'Jul','Mar','May','Oct', 'Dec']
+		months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep','Oct', 'Nov', 'Dec', 'Jan', 'Feb']
+		months31Days = ['Aug', 'Jul','Mar','May','Oct', 'Dec', 'Jan']
 		days=[]
 		for i in range(1,32):
 			if (i < 10):
@@ -172,7 +172,10 @@ class AscDatasets():
 		for i in range(len(months)):
 			for j in range(len(days)):
 				if (not j == 30 or months[i] in months31Days):
-					dataPath = dataPrefix + days[j] + '-' + months[i] + '-2020.asc'
+					if (months[i] in ['Jan', 'Feb']):
+						dataPath = dataPrefix + days[j] + '-' + months[i] + '-2021.asc'
+					else:
+						dataPath = dataPrefix + days[j] + '-' + months[i] + '-2020.asc'
 					if (not path.exists(dataPath)):
 						continue
 					data.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))
