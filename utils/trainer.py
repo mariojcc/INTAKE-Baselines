@@ -239,8 +239,8 @@ class Tester():
 		rmse_loss = batch_rmse_loss/len(self.test_data)
 		mae_loss = batch_mae_loss/len(self.test_data)
 		r2_metric = batch_r2/len(self.test_data)
-		self.save_prediction(preds, "2")
-		self.save_prediction(preds_border, "border_neg_2")
+		#self.save_prediction(preds, "1")
+		#self.save_prediction(preds_border, "border_1")
 		return rmse_loss, mae_loss, r2_metric
 
 	def online_learning(self, x, y):

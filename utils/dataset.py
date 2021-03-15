@@ -107,8 +107,8 @@ class AscDatasets():
 		return self.test_data_border
 
 	def processData(self):
-		months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep','Oct', 'Nov', 'Dec']
-		months31Days = ['Aug', 'Jul','Mar','May','Oct', 'Dec']
+		months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep','Oct', 'Nov', 'Dec','Jan','Feb']
+		months31Days = ['Aug', 'Jul','Mar','May','Oct', 'Dec','Jan']
 		days=[]
 		for i in range(1,32):
 			if (i < 10):
@@ -117,6 +117,7 @@ class AscDatasets():
 		dataX = []
 		dataY = []
 		data = []
+		count = 0
 		singleSequenceX = []
 		singleSequenceY = []
 		dataPrefix = self.dataPath + '/medianmodel_'
@@ -125,13 +126,18 @@ class AscDatasets():
 		for i in range(len(months)):
 			for j in range(len(days)):
 				if (not j == 30 or months[i] in months31Days):
-					dataPath = dataPrefix + days[j] + '-' + months[i] + '-2020.asc'
+					if (months[i] in ['Jan','Feb']):
+						dataPath = dataPrefix + days[j] + '-' + months[i] + '-2021.asc'
+					else:
+						dataPath = dataPrefix + days[j] + '-' + months[i] + '-2020.asc'
 					if (not path.exists(dataPath)):
 						continue
 					data.append(np.genfromtxt(dataPath, dtype=None, skip_header = 6))
+					count += 1
 					if ("01-Sep-2020" in dataPath):
 						index = len(data)-1
 		data = np.array(data)
+		print("FILE COUNT:" + str(count))
 		for i in range(data.shape[0]):
 			if (i+self.x_seq_len+self.y_seq_len <= data.shape[0]):
 				singleSequenceX = data[i:i+self.x_seq_len, :, :]
