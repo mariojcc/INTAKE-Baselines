@@ -22,7 +22,7 @@ def run_arima(data, train_data, i):
 		print(train_data.shape)
 		in_x = np.copy(train_data)
 		preds = []
-		for j in range(122):
+		for j in range(181):
 			start_index = len(train_data) + j
 			end_index = start_index + 6
 			arima = sm.tsa.statespace.SARIMAX(in_x, order=(7,0,1), enforce_stationarity=False) #try with MA as (1,0,0,0,0,0,1) 
@@ -36,8 +36,8 @@ if __name__ == '__main__':
 	dataset = AscDatasets('data', '/medianmodel_acc', 3, 1, False, 0.2, 0.2, 7, 7)
 	data = dataset.load_data_arima()
 
-	train_data = data[:-129] #165 #158
-	test_data = data[-122:]
+	train_data = data[:-188] #165 #158
+	test_data = data[-181:]
 	#preds = np.empty([122, test_data.shape[1]])
 	train = train_data.T[int(train_data.shape[1]/2):]
 	idxs = list(range(len(train)))
@@ -46,7 +46,7 @@ if __name__ == '__main__':
 		func = partial(run_arima, data)
 		pred_matrix = pool.starmap(func, zip(train, idxs))
 		preds = np.array(pred_matrix)
-		#shape 122 x time series
+		#shape 181 x time series
 		preds = preds.T
 		print(preds.shape)
 		pool.close()
