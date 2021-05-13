@@ -13,7 +13,7 @@ def save_prediction(prediction):
 def rmse(y_actual, y_predicted):
     return sqrt(mean_squared_error(y_actual, y_predicted) + 1e-6)
 
-def run_arima(data, train_data, i):
+def run_arma(data, train_data, i):
 	if (-999.250 in train_data):
 		preds = [-999.250 for i in range(181)]
 		return preds
@@ -25,8 +25,8 @@ def run_arima(data, train_data, i):
 		for j in range(181):
 			start_index = len(train_data) + j
 			end_index = start_index + 6
-			arima = sm.tsa.statespace.SARIMAX(in_x, order=(7,0,1), enforce_stationarity=False)
-			results = arima.fit(disp=False, maxiter=100) 
+			arma = sm.tsa.statespace.SARIMAX(in_x, order=(7,0,1), enforce_stationarity=False)
+			results = arma.fit(disp=False, maxiter=100) 
 			pred_sequence = results.predict(start=start_index, end=end_index, dynamic=False)
 			preds.append(pred_sequence[-1])
 			in_x = np.append(in_x, data[start_index, i])
@@ -34,21 +34,23 @@ def run_arima(data, train_data, i):
 
 if __name__ == '__main__':
 	dataset = AscDatasets('data', '/medianmodel_acc', 3, 1, False, 0.2, 0.2, 7, 7)
-	data = dataset.load_data_arima()
+	data = dataset.load_data_arma()
 
-	train_data = data[:-188] #165 #158
+	train_data = data[:-188]
 	test_data = data[-181:]
-	#preds = np.empty([122, test_data.shape[1]])
-	#train = train_data.T[int(train_data.shape[1]/2):]
-	train = train_data.T
-	idxs = list(range(len(train)))
+
+	#Second half of the data
+	train = train_data.T[int(train_data.shape[1]/2):]
+	idxs = [x+int(train_data.shape[1]/2) for x in idxs]
+
+	#First half of the data
+	#train = train_data.T[: int(train_data.shape[1]/2)]
 	#idxs = list(range(int(train_data.shape[1]/2)))
-	#idxs = [x+int(train_data.shape[1]/2) for x in idxs]
 	with Pool() as pool:
-		func = partial(run_arima, data)
+		func = partial(run_arma, data)
 		pred_matrix = pool.starmap(func, zip(train, idxs))
 		preds = np.array(pred_matrix)
-		#shape 181 x time series
+		#shape: 181 x time series
 		preds = preds.T
 		print(preds.shape)
 		pool.close()

@@ -13,9 +13,7 @@ from utils.dataset import AscDatasets
 from utils.dataset import AscDataset
 from utils.trainer import Trainer
 from utils.trainer import Tester
-from models.stconvs2s import STConvS2S, STConvS2S_U
-from models.stfd import ST_RFD, ST_CFD 
-from models.convlstm import STConvLSTM
+from models.stconvs2s import STConvS2S
 from sklearn.model_selection import TimeSeriesSplit
 
 class RMSELoss(torch.nn.Module):
@@ -31,11 +29,9 @@ class RMSELoss(torch.nn.Module):
 def prepare_dataset(args):
 	dataPath = 'data'
 	dataDestination = '/medianmodel_acc'
-	val_split = 0
 	test_split = args.split
-	if (not args.cross_validation):
-		val_split = args.split
-	data = AscDatasets(dataPath, dataDestination, args.region_division, args.input_region, args.scale, val_split, test_split, args.x_sequence_len, args.forecasting_horizon)
+	val_split = args.split
+	data = AscDatasets(dataPath, dataDestination, args.region_division, args.input_region, val_split, test_split, args.x_sequence_len, args.forecasting_horizon)
 	mask = data.get_mask_land()
 	return data, mask
 
@@ -74,10 +70,7 @@ def build_model(args, device, iteration):
 	print(f'Iteration: {iteration}')
 	seed = set_seed(iteration)
 	models = {
-		'st-rfd': ST_RFD,
-		'st-cfd': ST_CFD,
-		'stconvs2s': STConvS2S_U,
-		'convlstm': STConvLSTM
+		'stconvs2s': STConvS2S
 	}
 	data, mask = prepare_dataset(args)
 	train_data = data.get_train()
@@ -96,74 +89,26 @@ def build_model(args, device, iteration):
 	train_loader, test_loader, val_loader = create_loaders(args, train_data, test_data, val_data)
 
 	model_path = create_path(args.model, args.version)
-	if (args.model == 'st-rfd'):
-		recurrent_model = True
-	else:
-		recurrent_model = False
+	#Baseline models
 	if (args.version == 1):
-		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, mask, recurrent_model= recurrent_model)
-	if (args.version == 3):
-		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, mask, recurrent_model= recurrent_model, lilw = True)
+		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, mask)
+	#Models coupled with LILW parameters
+	if (args.version == 2):
+		trainer = Trainer(model, train_loader, val_loader, criterion, optimizer, args.epoch, device, model_path, args.patience, mask, lilw = True)
 
-	if (args.cross_validation):
-		tscv = TimeSeriesSplit()
-		fold = 0
-		total_val_loss = 0.0
-		for train_index, val_index in tscv.split(train_data.x):
-			fold += 1
-			x_train_fold, x_val_fold = train_data.x[train_index], train_data.x[val_index]
-			y_train_fold, y_val_fold = train_data.y[train_index], train_data.y[val_index]
-			train = AscDataset(x_train_fold, y_train_fold, data_format = 'tensor')
-			val = AscDataset(x_val_fold, y_val_fold, data_format = 'tensor')
-			train_loader, val_loader, _ = create_loaders(args, train, val)
-			trainer.train_data = train_loader
-			trainer.val_data = val_loader
-			trainer.earlyStop.reset(args.patience)
-			print(f'---------------Fold {fold} ---------------')
-			print("-----Train-----")
-			print("Index:", train_index)
-			print("X : ", train.x.shape)
-			print("Y : ", train.y.shape)
-			print("-----Val-----")
-			print("Index:", val_index)
-			print("X : ", val.x.shape)
-			print("Y : ", val.y.shape)
-			train_losses, val_losses = trainer.train_evaluate()
-			'''model = models[args.model](train_data.x.shape, args.num_layers, args.hidden_dim, args.kernel_size, args.dropout, args.forecasting_horizon, args.version, device)
-			model.to(device)
-			trainer.model = model
-			optimizer = adamod.AdaMod(model.parameters(), **opt_params)
-			trainer.optimizer = optimizer
-			total_val_loss += val_losses[-1]'''
-		#print(f"Validation Loss after {tscv.get_n_splits()} splits: {total_val_loss / tscv.get_n_splits()}")
-	else:
-		print("-----Train-----")
-		print("X : ", train_data.x.shape)
-		print("Y : ", train_data.y.shape)
-		print("-----Val-----")
-		print("X : ", val_data.x.shape)
-		print("Y : ", val_data.y.shape)
-		print("-----Test-----")
-		print("X : ", test_data.x.shape)
-		print("Y : ", test_data.y.shape)
-		train_losses, val_losses = trainer.train_evaluate()
+	print("-----Train-----")
+	print("X : ", train_data.x.shape)
+	print("Y : ", train_data.y.shape)
+	print("-----Val-----")
+	print("X : ", val_data.x.shape)
+	print("Y : ", val_data.y.shape)
+	print("-----Test-----")
+	print("X : ", test_data.x.shape)
+	print("Y : ", test_data.y.shape)
 
-	if (args.disjoint):
-		test_data.x = test_data.x[::args.x_sequence_len, :, :, :, :]
-		test_data.y = test_data.y[::args.x_sequence_len, :, :, :, :]
-		assert test_data.x.shape[0] == test_data.y.shape[0]
-		params = {'batch_size': args.batch, 'num_workers': args.workers, 'worker_init_fn': init_seed}
-		test_loader = DataLoader(dataset=test_data, shuffle=False, **params)
-		print("-----Test-----")
-		print("X : ", test_data.x.shape)
-		print("Y : ", test_data.y.shape)
-		_, test_loader, _ = create_loaders(args, train_data, test_data, val_data)
-
-	tester = Tester(model, optimizer, criterion, test_loader, device, False, args.model + '_' + str(args.version) + '_' + str(args.input_region),  mask, recurrent_model=False)
-	if (args.scale):
-		rmse,mae,r2 = tester.load_and_test(trainer.path, data)
-	else:
-		rmse, mae, r2 = tester.load_and_test(trainer.path)
+	train_losses, val_losses = trainer.train_evaluate()
+	tester = Tester(model, optimizer, criterion, test_loader, device, args.model + '_' + str(args.version) + '_' + str(args.input_region),  mask)
+	rmse, mae, r2 = tester.load_and_test(trainer.path)
 
 	return rmse,mae,r2
 
@@ -187,27 +132,25 @@ def run_model(args, device):
 
 if __name__ == '__main__':
 	parser = arg.ArgumentParser()
+	#How many regions should the entire dataset be split into
 	parser.add_argument('-rd', '--region-division', type=int, choices = [1,2,3,4,5], default=1)
+	#Current region
 	parser.add_argument('-ir', '--input-region', type=int, default=1)
 	parser.add_argument('-e',  '--epoch', type=int, default=100)
 	parser.add_argument('-b',  '--batch', type=int, default=15)
 	parser.add_argument('-p',  '--patience', type=int, default=10)
 	parser.add_argument('-w',  '--workers', type=int, default=4)
-	parser.add_argument('-m',  '--model', type=str, choices=['st-rfd', 'st-cfd', 'stconvs2s', 'convlstm'], default='st-rfd')
+	parser.add_argument('-m',  '--model', type=str, choices=['stconvs2s'], default='stconvs2s')
 	parser.add_argument('-l',  '--num-layers', type=int, dest='num_layers', default=3)
 	parser.add_argument('-d',  '--hidden-dim', type=int, dest='hidden_dim', default=32)
 	parser.add_argument('-k',  '--kernel-size', type=int, dest='kernel_size', default=5)
 	parser.add_argument('-dr', '--dropout', type=float, default=0.0)
-	parser.add_argument('-iw', '--input-window', type=int, default = 5)
-	parser.add_argument('-fh', '--forecasting-horizon', type=int, default=5)
+	parser.add_argument('-fh', '--forecasting-horizon', type=int, default=7)
 	parser.add_argument('-i',  '--iteration', type=int, default=1)
-	parser.add_argument('-cv', '--cross-validation', type=bool, default=False)
 	parser.add_argument('-sp', '--split', type=float, default = 0.2)
-	# 1 = base model, 2 = base + gridmask, 3 = base + lilw, 4 = base + gridmask + lilw
-	parser.add_argument('-v',  '--version', type=int, choices=[1,2,3,4], default=1)
-	parser.add_argument('-s',  '--scale', type=bool, default=False)
-	parser.add_argument('-xsl',  '--x-sequence-len', type=int, default=5)
-	parser.add_argument('-dj',  '--disjoint', type=bool, default=False)
+	# 1 = base model, 2 = base model + lilw
+	parser.add_argument('-v',  '--version', type=int, choices=[1,2], default=1)
+	parser.add_argument('-xsl',  '--x-sequence-len', type=int, default=7)
 
 	args = parser.parse_args()
 

@@ -5,76 +5,14 @@ import os.path
 from os import path
 from sklearn.preprocessing import MinMaxScaler
 
-class NCDFDatasets():
-	def __init__(self, data, val_split, test_split, cut_y=False,  data_type='Prediction'):
-		self.train_data = NCDFDataset(data, data.sample.size, test_split, val_split, data_type, False, False, cut_y)
-		self.val_data = NCDFDataset(data, data.sample.size, test_split, val_split, data_type, False, True, cut_y)
-		self.test_data = NCDFDataset(data, data.sample.size, test_split, val_split, data_type, True, False, cut_y)
-
-	def get_train(self):
-		return self.train_data
-	def get_val(self):
-		return self.val_data
-	def get_test(self):
-		return self.test_data
-
-class NCDFDataset(Dataset):
-	def __init__(self, data, sampleSize, test_split, val_split, data_type, is_test=False, is_val=False, cut_y=False):
-		super(NCDFDataset, self).__init__()
-		self.cut_y = cut_y
-		self.reconstruction = True if data_type == 'Reconstruction' else False 
-
-		splitter = DataSplitter(data, sampleSize, test_split, val_split)
-		if (is_test):
-			dataset = splitter.split_test()
-		elif (is_val):
-			dataset = splitter.split_val()
-		else:
-			dataset = splitter.split_train()
-
-		#batch, channel, time, lat, lon
-		self.x = torch.from_numpy(dataset.x.values).float().permute(0, 4, 1, 2, 3)
-		if (self.cut_y):
-			self.y = torch.from_numpy(dataset.y.values).float().permute(0, 4, 1, 2, 3)[:,:,0,:,:]
-		else:
-			self.y = torch.from_numpy(dataset.y.values).float().permute(0, 4, 1, 2, 3)
-		del dataset
-
-		if (self.reconstruction):
-			data_cat = torch.cat((self.x, self.y), 2)
-			self.y = data_cat.clone().detach()
-			self.x, self.removed = self.removeObservations(data_cat.clone().detach())
-
-	def __getitem__(self, index):
-		if (self.reconstruction):
-			return (self.x[index,:,:,:,:], self.y[index,:,:,:,:], self.removed[index])
-		elif (self.cut_y):
-			return (self.x[index,:,:5,:,:], self.y[index,:,:,:])
-		else:
-			return (self.x[index,:,:5,:,:], self.y[index,:,:,:,:])
-
-	def __len__(self):
-		return self.x.shape[0]
-
-	def removeObservations(self, data):
-		removed_observations = torch.zeros(data.shape[0], dtype=torch.long)
-		new_data = torch.zeros(data.shape[0], data.shape[1], data.shape[2]-1, data.shape[3], data.shape[4])
-		for i in range(data.shape[0]):
-			index = np.random.randint(0, data.shape[2])
-			#new_data[i] = torch.cat([data[i, :, :index, :, :], data[i, :, index+1:, :, :]], dim=1)
-			data[i,:,index,:,:] = torch.empty(data.shape[1], data.shape[3], data.shape[4]).fill_(-1)
-			removed_observations[i] = index
-		return data, removed_observations
-
 class AscDatasets():
-	def __init__(self, dataPath, dataDestination, subregions, current_region, scale, val_split, test_split, x_seq_len, y_seq_len):
+	def __init__(self, dataPath, dataDestination, subregions, current_region, val_split, test_split, x_seq_len, y_seq_len):
 		self.dataPath = dataPath
 		self.dataDestination = dataDestination
 		self.val_split = val_split
 		self.test_split = test_split
 		self.subregions = subregions
 		self.current_region = current_region
-		self.scale = scale
 		self.x_seq_len = x_seq_len
 		self.y_seq_len = y_seq_len
 		self.cutoff = None
@@ -86,15 +24,10 @@ class AscDatasets():
 			self.save_data()
 		self.dataX, self.dataY = self.replace_missing_values(self.dataX, self.dataY, 0.0)
 		self.split()
-		if (self.scale):
-			self.scale_data()
 		print(self.dataX.shape)
 		print(self.dataY.shape)
 		self.train_data = AscDataset(self.train_data_x, self.train_data_y)
-		if (self.val_split == 0):
-			self.val_data = None
-		else:
-			self.val_data = AscDataset(self.val_data_x, self.val_data_y)
+		self.val_data = AscDataset(self.val_data_x, self.val_data_y)
 		self.test_data = AscDataset(self.test_data_x, self.test_data_y, border_data_x = self.test_data_border_x, border_data_y = self.test_data_border_y)
 
 	def get_train(self):
@@ -150,13 +83,11 @@ class AscDatasets():
 		assert len(dataX) == len(dataY)
 		npDataX = np.array(dataX)
 		npDataY = np.array(dataY)
-		#assert (npDataX[0,1,:,:].all() == npDataX[1,0,:,:].all())
-		#assert(npDataY[0,0,:,:].all() == npDataX[1,self.x_seq_len-1,:,:].all())
 		print(npDataX.shape)
 		print(npDataY.shape)
 		return npDataX,npDataY
 
-	def process_data_arima(self):
+	def process_data_arma(self):
 		months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep','Oct', 'Nov', 'Dec', 'Jan', 'Feb']
 		months31Days = ['Aug', 'Jul','Mar','May','Oct', 'Dec', 'Jan']
 		days=[]
@@ -213,24 +144,27 @@ class AscDatasets():
 		return data_arima
 
 	def split(self):
-		#test_cutoff = int(self.dataX.shape[0] * self.test_split)
 		if (self.cutoff is None):
-			#Index for Sep 1st prediction
+			#Index for Sep 1st
 			self.cutoff = 152
 		val_cutoff = int(self.cutoff * self.val_split)
 		#instances, sequence, height, width
+
 		train_data_x = self.dataX[0:self.cutoff - val_cutoff]
 		train_data_y = self.dataY[0:self.cutoff - val_cutoff]
 		self.train_data_x, self.train_data_y = self.calculate_sub_regions(train_data_x, train_data_y)
 		assert self.train_data_x.shape[0] == self.train_data_y.shape[0]
+
 		val_data_x = self.dataX[self.cutoff - val_cutoff:self.cutoff]
 		val_data_y = self.dataY[self.cutoff - val_cutoff:self.cutoff]
 		self.val_data_x, self.val_data_y = self.calculate_sub_regions(val_data_x, val_data_y)
 		assert self.val_data_x.shape[0] == self.val_data_y.shape[0]
+
 		test_data_x = self.dataX[self.cutoff: self.dataX.shape[0]]
 		test_data_y = self.dataY[self.cutoff: self.dataY.shape[0]]
 		self.test_data_x, self.test_data_y = self.calculate_sub_regions(test_data_x, test_data_y)
 		assert self.test_data_x.shape[0] == self.test_data_y.shape[0]
+
 		self.test_data_border_x, self.test_data_border_y = self.calculate_sub_regions(test_data_x, test_data_y, 10)
 		assert self.test_data_border_x.shape[0] == self.test_data_border_y.shape[0]
 
@@ -243,15 +177,6 @@ class AscDatasets():
 			cut_height += remainder
 		data_x = data_x[:,:,start+step:start+cut_height+step,:]
 		data_y = data_y[:,:,start+step:start+cut_height+step,:]
-
-
-		'''cut_width = int(data_x.shape[3] / self.subregions)
-		remainder = data_x.shape[3] % self.subregions
-		start = cut_width * (self.current_region-1)
-		if (remainder > 0 and self.current_region == self.subregions):
-			cut_width += remainder
-		data_x = data_x[:,:,:,start:start+cut_width]
-		data_y = data_y[:,:,:,start:start+cut_width]'''
 		return data_x, data_y
 
 	def replace_missing_values(self, dataX, dataY, value):
@@ -284,7 +209,7 @@ class AscDatasets():
 			for j in range(time):
 				data[i,0,j,:,:] = self.scaler.inverse_transform(data[i,0,j,:,:])
 		return data
-
+	#Mask that filters out undefined values (i.e., ocean pixels)
 	def get_mask_land(self):
 		filename = 'mask.npy'
 		mask_land = np.load(filename)
@@ -300,7 +225,7 @@ class AscDatasets():
 
 class AscDataset(Dataset):
 	def __init__(self, dataX, dataY, data_format='numpy', border_data_x = None, border_data_y = None):
-		#batch, channel, time, width, height
+		#batch, channel, time, height, width
 		self.border_x = None
 		self.border_y = None
 		if (data_format == 'numpy'):

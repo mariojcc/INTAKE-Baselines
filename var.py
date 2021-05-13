@@ -7,34 +7,31 @@ from functools import partial
 from statsmodels.tsa.api import VAR
 
 def save_prediction(prediction):
-	dataPath = 'data/medianmodel_acc_pred_var'
+	dataPath = 'data/medianmodel_acc_pred_var_'
 	with open(dataPath+'.asc', 'wb') as f:
 		np.save(f, prediction, allow_pickle=False)
 
 if __name__ == '__main__':
-	dataset = AscDatasets('data', '/medianmodel_acc', 3, 1, False, 0.2, 0.2, 7, 7)
+	dataset = AscDatasets('data', '/medianmodel_acc', 3, 1, False, 0.2, 0.2, 14, 14)
 	data = dataset.load_data_arima()
 	data[data == -999.25] = np.nan
-	data = np.diff(np.diff(data))
+	mask = np.all(np.isnan(data), axis=0)
+	data = data[:,~mask]
+	print("Data shape:")
+	print(data.shape)
 
-	train_data = data[:-188] #165 #158
-	test_data = data[-181:]
-	#train = train_data.T
-	#test = test_data.T
-	mask = np.all(np.isnan(train_data), axis=0)
-	train = train_data[:,~mask]
-	mask = np.all(np.isnan(test_data), axis=0)
-	test = test_data[:,~mask]
+	train = data[:-188]
+	test = data[-181:]
+	print("Train shape:")
 	print(train.shape)
+	print("Test shape:")
 	print(test.shape)
+	preds = []
 	for i in range(181):
-		preds = []
 		forecasting_model = VAR(train)
-		results = forecasting_model.fit(7)
+		results = forecasting_model.fit(4)
 		results = results.forecast(y = train, steps=7)
-		print(results.shape)
 		preds.append(results[-1])
-		print(len(preds[0]))
-		train = np.append(train, test[:,i:i+1], 1)
-		print(train.shape)
+		train = np.append(train, test[i:i+1,:], 0)
+	preds = np.array(preds)
 	save_prediction(preds)
